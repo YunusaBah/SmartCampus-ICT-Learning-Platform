@@ -3,23 +3,33 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const sanitizeUser = require("../utils/sanitizeUser");
 
-require("dotenv").config();
+require("../config/env");
 
 exports.register = async (req, res) => {
     try {
         const { fullName, email, password, lecturerCode } = req.body;
 
-        if (!fullName || !email || !password) {
+        if (typeof fullName !== "string" || !fullName.trim() ||
+            typeof email !== "string" || !email.trim() ||
+            typeof password !== "string" || !password) {
             return res.status(400).json({ message: "All fields are required" });
+        }
+
+        const normalizedEmail = email.trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254) {
+            return res.status(400).json({ message: "Enter a valid email address" });
         }
 
         if (password.length < 6) {
             return res.status(400).json({ message: "Password must be at least 6 characters" });
         }
+        if (Buffer.byteLength(password, "utf8") > 72) {
+            return res.status(400).json({ message: "Password must be no more than 72 bytes" });
+        }
 
-        const existingUser = await User.findOne({ where: { email } });
+        const existingUser = await User.findOne({ where: { email: normalizedEmail } });
         if (existingUser) {
-            return res.status(400).json({ message: "User already exists" });
+            return res.status(409).json({ message: "An account with this email already exists" });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -35,8 +45,8 @@ exports.register = async (req, res) => {
         }
 
         const user = await User.create({
-            fullName,
-            email,
+            fullName: fullName.trim(),
+            email: normalizedEmail,
             password: hashedPassword,
             role
         });
@@ -47,7 +57,11 @@ exports.register = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        if (error.name === "SequelizeUniqueConstraintError") {
+            return res.status(409).json({ message: "An account with this email already exists" });
+        }
+        console.error("Registration failed:", error);
+        res.status(500).json({ message: "Registration failed" });
     }
 };
 
@@ -55,20 +69,26 @@ exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        if (!email || !password) {
+        if (typeof email !== "string" || !email.trim() ||
+            typeof password !== "string" || !password) {
             return res.status(400).json({ message: "Email and password are required" });
         }
 
-        const user = await User.findOne({ where: { email } });
+        const user = await User.findOne({ where: { email: email.trim().toLowerCase() } });
 
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(401).json({ message: "Invalid email or password" });
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
 
         if (!isMatch) {
-            return res.status(400).json({ message: "Invalid credentials" });
+            return res.status(401).json({ message: "Invalid email or password" });
+        }
+
+        if (!process.env.JWT_SECRET) {
+            console.error("JWT_SECRET is not configured");
+            return res.status(500).json({ message: "Authentication is not configured" });
         }
 
         const token = jwt.sign(
@@ -84,6 +104,7 @@ exports.login = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Login failed:", error);
+        res.status(500).json({ message: "Login failed" });
     }
 };

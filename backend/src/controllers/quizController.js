@@ -2,6 +2,7 @@ const Quiz = require("../models/Quiz");
 const QuizResult = require("../models/QuizResult");
 const Course = require("../models/Course");
 const Enrollment = require("../models/Enrollment");
+const getCourseAccess = require("../utils/courseAccess");
 
 exports.createQuiz = async (req, res) => {
     try {
@@ -15,22 +16,29 @@ exports.createQuiz = async (req, res) => {
             courseId
         } = req.body;
 
-        if (!question || !optionA || !optionB || !optionC || !optionD || !correctAnswer || !courseId) {
+        const options = [optionA, optionB, optionC, optionD];
+        if (typeof question !== "string" || !question.trim() ||
+            options.some(option => typeof option !== "string" || !option.trim()) ||
+            typeof correctAnswer !== "string" || !/^[A-D]$/i.test(correctAnswer) ||
+            !courseId) {
             return res.status(400).json({ message: "All quiz fields are required" });
         }
 
         const course = await Course.findByPk(courseId);
-        if (!course || (course.lecturerId !== req.user.id && req.user.role !== "admin")) {
+        if (!course) {
+            return res.status(404).json({ message: "Course not found" });
+        }
+        if (course.lecturerId !== req.user.id && req.user.role !== "admin") {
             return res.status(403).json({ message: "You can only add quizzes to your courses" });
         }
 
         const quiz = await Quiz.create({
-            question,
-            optionA,
-            optionB,
-            optionC,
-            optionD,
-            correctAnswer,
+            question: question.trim(),
+            optionA: optionA.trim(),
+            optionB: optionB.trim(),
+            optionC: optionC.trim(),
+            optionD: optionD.trim(),
+            correctAnswer: correctAnswer.toUpperCase(),
             courseId
         });
 
@@ -40,24 +48,27 @@ exports.createQuiz = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Failed to create quiz:", error);
+        res.status(500).json({ message: "Failed to create quiz" });
     }
 };
 
 exports.getCourseQuizzes = async (req, res) => {
     try {
-        const isLecturer = req.user.role === "lecturer" || req.user.role === "admin";
+        const access = await getCourseAccess(req.params.courseId, req.user);
+        if (access.status) return res.status(access.status).json({ message: access.message });
 
         const quizzes = await Quiz.findAll({
-            where: { courseId: req.params.courseId },
-            attributes: isLecturer ? undefined : { exclude: ["correctAnswer"] },
+            where: { courseId: access.course.id },
+            attributes: access.isManager ? undefined : { exclude: ["correctAnswer"] },
             order: [["id", "DESC"]]
         });
 
         res.json(quizzes);
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Failed to load quizzes:", error);
+        res.status(500).json({ message: "Failed to load quizzes" });
     }
 };
 
@@ -65,7 +76,7 @@ exports.submitQuiz = async (req, res) => {
     try {
         const { quizId, selectedAnswer } = req.body;
 
-        if (!quizId || !selectedAnswer) {
+        if (!quizId || typeof selectedAnswer !== "string" || !/^[A-D]$/i.test(selectedAnswer)) {
             return res.status(400).json({ message: "quizId and selectedAnswer are required" });
         }
 
@@ -88,14 +99,14 @@ exports.submitQuiz = async (req, res) => {
 
         let score = 0;
 
-        if (selectedAnswer === quiz.correctAnswer) {
+        if (selectedAnswer.toUpperCase() === quiz.correctAnswer.toUpperCase()) {
             score = 1;
         }
 
         const result = await QuizResult.create({
             studentId: req.user.id,
             quizId,
-            selectedAnswer,
+            selectedAnswer: selectedAnswer.toUpperCase(),
             score
         });
 
@@ -106,6 +117,7 @@ exports.submitQuiz = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Failed to submit quiz:", error);
+        res.status(500).json({ message: "Failed to submit quiz" });
     }
 };

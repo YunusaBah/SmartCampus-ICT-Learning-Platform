@@ -11,6 +11,7 @@ require("../src/models/associations");
 const User = require("../src/models/User");
 const Course = require("../src/models/Course");
 const Enrollment = require("../src/models/Enrollment");
+const generateClassCode = require("../src/utils/generateClassCode");
 
 const seed = async () => {
     try {
@@ -47,9 +48,15 @@ const seed = async () => {
             where: { title: "Introduction to ICT" },
             defaults: {
                 description: "Fundamentals of information and communication technology.",
-                lecturerId: lecturer.id
+                lecturerId: lecturer.id,
+                classCode: await generateClassCode()
             }
         });
+
+        if (!course.classCode) {
+            course.classCode = await generateClassCode();
+            await course.save();
+        }
 
         await Enrollment.findOrCreate({
             where: {

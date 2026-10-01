@@ -5,19 +5,15 @@ import { useAuth } from "../hooks/useAuth";
 const AIAssistant = ({ courseName = "", lessonContent = "" }) => {
     const { user, isStaff } = useAuth();
     const [open, setOpen] = useState(false);
-    const [messages, setMessages] = useState([]);
+    const [messages, setMessages] = useState(() => [{
+        role: "ai",
+        text: isStaff
+            ? `Hi! I can generate quiz questions for "${courseName}". Just ask me like: "Generate 3 questions about variables"`
+            : `Hi! I'm your learning assistant for "${courseName}". Ask me to explain anything — I won't give quiz answers directly, but I'll help you understand!`
+    }]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const bottomRef = useRef(null);
-
-    useEffect(() => {
-        setMessages([{
-            role: "ai",
-            text: isStaff
-                ? `Hi! I can generate quiz questions for "${courseName}". Just ask me like: "Generate 3 questions about variables"`
-                : `Hi! I'm your learning assistant for "${courseName}". Ask me to explain anything — I won't give quiz answers directly, but I'll help you understand!`
-        }]);
-    }, [courseName, isStaff]);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -55,11 +51,11 @@ const AIAssistant = ({ courseName = "", lessonContent = "" }) => {
                 style={{
                     position: "fixed", bottom: 24, right: 24, zIndex: 1000,
                     width: 58, height: 58, borderRadius: "50%",
-                    background: open ? "#0b1220" : "#00d4ff",
+                    background: open ? "var(--theme-bg)" : "var(--theme-accent)",
                     border: "2px solid #00d4ff",
                     fontSize: "1.5rem", cursor: "pointer",
                     boxShadow: "0 4px 24px rgba(0,212,255,0.4)",
-                    color: open ? "#00d4ff" : "#0b1220",
+                    color: open ? "var(--theme-accent)" : "var(--theme-active-text)",
                     transition: "all 0.2s", display: "flex",
                     alignItems: "center", justifyContent: "center"
                 }}>
@@ -71,22 +67,22 @@ const AIAssistant = ({ courseName = "", lessonContent = "" }) => {
                 <div style={{
                     position: "fixed", bottom: 94, right: 24, zIndex: 999,
                     width: "min(400px, calc(100vw - 32px))",
-                    background: "#111a2e", borderRadius: 16,
+                    background: "var(--theme-panel)", borderRadius: 16,
                     boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
-                    border: "1px solid #1e3358",
+                    border: "1px solid var(--theme-border)",
                     display: "flex", flexDirection: "column",
                     maxHeight: "65vh"
                 }}>
                     {/* Header */}
                     <div style={{
-                        padding: "14px 18px", background: "#16233f",
-                        borderBottom: "1px solid #1e3358",
+                        padding: "14px 18px", background: "var(--theme-panel-raised)",
+                        borderBottom: "1px solid var(--theme-border)",
                         borderRadius: "16px 16px 0 0"
                     }}>
                         <p style={{ color: "#00d4ff", fontWeight: 700, fontSize: "0.95rem" }}>
                             🤖 AI {isStaff ? "Quiz Generator" : "Learning Assistant"}
                         </p>
-                        <p style={{ color: "#9fb3d1", fontSize: "0.75rem", marginTop: 2 }}>
+                        <p style={{ color: "var(--theme-muted)", fontSize: "0.75rem", marginTop: 2 }}>
                             {isStaff
                                 ? "Generates quiz questions from your course materials"
                                 : "Helps you understand — won't give direct answers"}
@@ -101,8 +97,8 @@ const AIAssistant = ({ courseName = "", lessonContent = "" }) => {
                         {messages.map((msg, i) => (
                             <div key={i} style={{
                                 alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-                                background: msg.role === "user" ? "#00d4ff" : "#16233f",
-                                color: msg.role === "user" ? "#0b1220" : "#e0e8f0",
+                                background: msg.role === "user" ? "var(--theme-accent)" : "var(--theme-panel-raised)",
+                                color: msg.role === "user" ? "var(--theme-active-text)" : "var(--theme-text)",
                                 padding: "10px 14px",
                                 borderRadius: msg.role === "user"
                                     ? "12px 12px 2px 12px"
@@ -114,7 +110,7 @@ const AIAssistant = ({ courseName = "", lessonContent = "" }) => {
                             </div>
                         ))}
                         {loading && (
-                            <div style={{ color: "#9fb3d1", fontSize: "0.82rem", padding: "4px 0" }}>
+                            <div style={{ color: "var(--theme-muted)", fontSize: "0.82rem", padding: "4px 0" }}>
                                 AI is thinking...
                             </div>
                         )}
@@ -123,7 +119,7 @@ const AIAssistant = ({ courseName = "", lessonContent = "" }) => {
 
                     {/* Input */}
                     <div style={{
-                        padding: "10px 12px", borderTop: "1px solid #1e3358",
+                        padding: "10px 12px", borderTop: "1px solid var(--theme-border)",
                         display: "flex", gap: 8
                     }}>
                         <input
@@ -135,16 +131,16 @@ const AIAssistant = ({ courseName = "", lessonContent = "" }) => {
                                 : "Ask about this course..."}
                             style={{
                                 flex: 1, padding: "10px 12px",
-                                background: "#16233f", border: "1px solid #1e3358",
-                                borderRadius: 8, color: "white", fontSize: "0.88rem"
+                                background: "var(--theme-panel-raised)", border: "1px solid var(--theme-border)",
+                                borderRadius: 8, color: "var(--theme-text)", fontSize: "0.88rem"
                             }}
                         />
                         <button onClick={send} disabled={loading || !input.trim()}
                                 style={{
                                     padding: "10px 14px",
-                                    background: loading || !input.trim() ? "#16233f" : "#00d4ff",
+                                    background: loading || !input.trim() ? "var(--theme-panel-raised)" : "var(--theme-accent)",
                                     border: "none", borderRadius: 8,
-                                    color: loading || !input.trim() ? "#4a6a8a" : "#0b1220",
+                                    color: loading || !input.trim() ? "var(--theme-muted)" : "var(--theme-active-text)",
                                     fontWeight: 700, cursor: "pointer", fontSize: "1rem"
                                 }}>
                             ➤

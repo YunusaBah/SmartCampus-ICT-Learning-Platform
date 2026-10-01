@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import API from "../services/api";
 import API_BASE from "../config";
@@ -26,7 +26,7 @@ const CourseDetail = () => {
         setTimeout(() => setAlertMsg(null), 3500);
     };
 
-    const loadCourse = () => {
+    const loadCourse = useCallback(() => {
         API.get(`/courses/${courseId}`)
             .then(res => {
                 setData(res.data);
@@ -35,23 +35,23 @@ const CourseDetail = () => {
             .catch(err => {
                 setError(err.response?.data?.message || "Cannot load course");
             });
-    };
+    }, [courseId]);
 
-    const loadSubmissions = () => {
+    const loadSubmissions = useCallback(() => {
         API.get(`/assignments/course/${courseId}/submissions`)
             .then(res => setSubmissions(res.data))
             .catch(err => console.error(err));
-    };
+    }, [courseId]);
 
     useEffect(() => {
         loadCourse();
-    }, [courseId]);
+    }, [loadCourse]);
 
     useEffect(() => {
         if (data?.isLecturer && tab === "grading") {
             loadSubmissions();
         }
-    }, [data, tab]);
+    }, [data?.isLecturer, tab, loadSubmissions]);
 
     const handleCreateLesson = async (e) => {
         e.preventDefault();
@@ -158,7 +158,7 @@ const CourseDetail = () => {
                 ← Back to courses
             </Link>
             <h1>{course.title}</h1>
-            <p style={{ color: "#9fb3d1", marginBottom: 20 }}>{course.description}</p>
+            <p style={{ color: "var(--theme-muted)", marginBottom: 20 }}>{course.description}</p>
 
             {alertMsg && (
                 <p style={{
@@ -177,8 +177,8 @@ const CourseDetail = () => {
                     <button key={t} type="button" onClick={() => setTab(t)}
                             style={{
                                 padding: "10px 18px", borderRadius: 8, border: "none",
-                                background: tab === t ? "#00d4ff" : "#16233f",
-                                color: tab === t ? "#0b1220" : "white",
+                                background: tab === t ? "var(--theme-accent)" : "var(--theme-panel-raised)",
+                                color: tab === t ? "var(--theme-active-text)" : "var(--theme-text)",
                                 fontWeight: tab === t ? 700 : 400,
                                 cursor: "pointer", whiteSpace: "nowrap", fontSize: "0.9rem"
                             }}>
@@ -208,11 +208,11 @@ const CourseDetail = () => {
                         </form>
                     )}
                     <div className="card-grid">
-                        {lessons.length === 0 && <p style={{ color: "#9fb3d1" }}>No materials uploaded yet.</p>}
+                        {lessons.length === 0 && <p style={{ color: "var(--theme-muted)" }}>No materials uploaded yet.</p>}
                         {lessons.map(lesson => (
                             <div className="card" key={lesson.id}>
                                 <h3>{lesson.title}</h3>
-                                <p style={{ color: "#9fb3d1", fontSize: "0.9rem" }}>{lesson.content}</p>
+                                <p style={{ color: "var(--theme-muted)", fontSize: "0.9rem" }}>{lesson.content}</p>
                                 {lesson.videoUrl && (
                                     <a href={lesson.videoUrl} target="_blank" rel="noreferrer"
                                        style={{ display: "inline-block", marginTop: 8 }}>
@@ -237,7 +237,7 @@ const CourseDetail = () => {
                     {showLecturer && (
                         <form className="panel-form" onSubmit={handleCreateQuiz}>
                             <h3>Add Quiz Question</h3>
-                            <p style={{ color: "#9fb3d1", fontSize: "0.85rem", marginBottom: 8 }}>
+                            <p style={{ color: "var(--theme-muted)", fontSize: "0.85rem", marginBottom: 8 }}>
                                 Tip: Ask the 🤖 AI assistant to generate questions for you!
                             </p>
                             <input placeholder="Question" value={quizForm.question}
@@ -258,7 +258,7 @@ const CourseDetail = () => {
                         </form>
                     )}
                     <div className="card-grid">
-                        {quizzes.length === 0 && <p style={{ color: "#9fb3d1" }}>No quiz questions yet.</p>}
+                        {quizzes.length === 0 && <p style={{ color: "var(--theme-muted)" }}>No quiz questions yet.</p>}
                         {quizzes.map(quiz => (
                             <div className="card" key={quiz.id}>
                                 <h3 style={{ marginBottom: 12 }}>{quiz.question}</h3>
@@ -268,9 +268,9 @@ const CourseDetail = () => {
                                             <label key={opt} style={{
                                                 display: "flex", alignItems: "center", gap: 10,
                                                 padding: "10px 12px", margin: "6px 0",
-                                                background: quizAnswers[quiz.id] === opt ? "rgba(0,212,255,0.1)" : "#16233f",
+                                                background: quizAnswers[quiz.id] === opt ? "rgba(0,212,255,0.1)" : "var(--theme-panel-raised)",
                                                 borderRadius: 8, cursor: "pointer",
-                                                border: quizAnswers[quiz.id] === opt ? "1px solid #00d4ff" : "1px solid transparent"
+                                                border: quizAnswers[quiz.id] === opt ? "1px solid var(--theme-accent)" : "1px solid transparent"
                                             }}>
                                                 <input type="radio" name={`quiz-${quiz.id}`} value={opt}
                                                        checked={quizAnswers[quiz.id] === opt}
@@ -288,7 +288,7 @@ const CourseDetail = () => {
                                         {["A", "B", "C", "D"].map(opt => (
                                             <li key={opt} style={{
                                                 padding: "6px 0",
-                                                color: quiz.correctAnswer === opt ? "#00d4ff" : "#9fb3d1",
+                                                color: quiz.correctAnswer === opt ? "var(--theme-accent)" : "var(--theme-muted)",
                                                 fontWeight: quiz.correctAnswer === opt ? 700 : 400
                                             }}>
                                                 {quiz.correctAnswer === opt ? "✓ " : ""}{opt}: {quiz[`option${opt}`]}
@@ -312,19 +312,19 @@ const CourseDetail = () => {
                                    onChange={e => setAssignmentForm({ ...assignmentForm, title: e.target.value })} required />
                             <textarea placeholder="Description" value={assignmentForm.description}
                                       onChange={e => setAssignmentForm({ ...assignmentForm, description: e.target.value })} required />
-                            <label style={{ color: "#9fb3d1", fontSize: "0.85rem" }}>Due Date</label>
+                            <label style={{ color: "var(--theme-muted)", fontSize: "0.85rem" }}>Due Date</label>
                             <input type="date" value={assignmentForm.dueDate}
                                    onChange={e => setAssignmentForm({ ...assignmentForm, dueDate: e.target.value })} required />
                             <button type="submit" className="btn" style={{ marginTop: 10 }}>Create Assignment</button>
                         </form>
                     )}
                     <div className="card-grid">
-                        {assignments.length === 0 && <p style={{ color: "#9fb3d1" }}>No assignments yet.</p>}
+                        {assignments.length === 0 && <p style={{ color: "var(--theme-muted)" }}>No assignments yet.</p>}
                         {assignments.map(a => (
                             <div className="card" key={a.id}>
                                 <h3>{a.title}</h3>
-                                <p style={{ color: "#9fb3d1", fontSize: "0.9rem" }}>{a.description}</p>
-                                <p style={{ color: "#9fb3d1", fontSize: "0.85rem", marginTop: 6 }}>
+                                <p style={{ color: "var(--theme-muted)", fontSize: "0.9rem" }}>{a.description}</p>
+                                <p style={{ color: "var(--theme-muted)", fontSize: "0.85rem", marginTop: 6 }}>
                                     Due: {new Date(a.dueDate).toLocaleDateString()}
                                 </p>
                                 {!showLecturer && (
@@ -352,25 +352,23 @@ const CourseDetail = () => {
                     <h2 style={{ marginBottom: 16, color: "#00d4ff" }}>
                         Enrolled Students ({students?.length || 0})
                     </h2>
-                    <div style={{ overflowX: "auto" }}>
-                        <table className="data-table">
-                            <thead>
-                            <tr><th>#</th><th>Name</th><th>Email</th></tr>
-                            </thead>
-                            <tbody>
-                            {(!students || students.length === 0) && (
-                                <tr><td colSpan="3" style={{ textAlign: "center", color: "#4a6a8a" }}>No students yet.</td></tr>
-                            )}
-                            {students?.map((s, i) => (
-                                <tr key={s.id}>
-                                    <td>{i + 1}</td>
-                                    <td>{s.fullName}</td>
-                                    <td>{s.email}</td>
-                                </tr>
+                    {(!students || students.length === 0) ? (
+                        <p className="empty-state">No students are enrolled in this course yet.</p>
+                    ) : (
+                        <ul className="student-list">
+                            {students.map((student) => (
+                                <li className="student-list-item" key={student.id}>
+                                    <div className="student-avatar" aria-hidden="true">
+                                        {student.fullName?.trim().charAt(0).toUpperCase() || "S"}
+                                    </div>
+                                    <div className="student-list-details">
+                                        <strong>{student.fullName}</strong>
+                                        <span>{student.email}</span>
+                                    </div>
+                                </li>
                             ))}
-                            </tbody>
-                        </table>
-                    </div>
+                        </ul>
+                    )}
                 </section>
             )}
 
@@ -379,12 +377,12 @@ const CourseDetail = () => {
                 <section>
                     <h2 style={{ marginBottom: 16, color: "#00d4ff" }}>Grade Submissions</h2>
                     {submissions.length === 0 && (
-                        <p style={{ color: "#9fb3d1" }}>No submissions yet.</p>
+                        <p style={{ color: "var(--theme-muted)" }}>No submissions yet.</p>
                     )}
                     {submissions.map(assignment => (
                         <div className="card" key={assignment.id} style={{ marginBottom: 16 }}>
                             <h3>{assignment.title}</h3>
-                            <p style={{ color: "#9fb3d1", fontSize: "0.85rem", marginTop: 4 }}>
+                            <p style={{ color: "var(--theme-muted)", fontSize: "0.85rem", marginTop: 4 }}>
                                 Due: {new Date(assignment.dueDate).toLocaleDateString()}
                             </p>
                             {(!assignment.submissions || assignment.submissions.length === 0) && (
@@ -392,12 +390,12 @@ const CourseDetail = () => {
                             )}
                             {assignment.submissions?.map(sub => (
                                 <div key={sub.id} style={{
-                                    borderTop: "1px solid #1e3358", marginTop: 12, paddingTop: 12,
+                                    borderTop: "1px solid var(--theme-border)", marginTop: 12, paddingTop: 12,
                                     display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center"
                                 }}>
                                     <div style={{ flex: 1, minWidth: 160 }}>
                                         <p><strong>{sub.student?.fullName || "Unknown"}</strong></p>
-                                        <p style={{ color: "#9fb3d1", fontSize: "0.82rem" }}>
+                                        <p style={{ color: "var(--theme-muted)", fontSize: "0.82rem" }}>
                                             {sub.student?.email || ""}
                                         </p>
                                         <span style={{
@@ -426,15 +424,15 @@ const CourseDetail = () => {
                                             }))}
                                             style={{
                                                 padding: "8px 12px", borderRadius: 8,
-                                                border: "1px solid #1e3358", background: "#16233f",
-                                                color: "white", width: 150, fontSize: "0.88rem"
+                                                border: "1px solid var(--theme-border)", background: "var(--theme-panel-raised)",
+                                                color: "var(--theme-text)", width: 150, fontSize: "0.88rem"
                                             }}
                                         />
                                         <button onClick={() => handleGrade(sub.id)}
                                                 style={{
                                                     padding: "8px 14px", background: "#f0a500",
                                                     border: "none", borderRadius: 8,
-                                                    color: "#0b1220", fontWeight: 700, cursor: "pointer"
+                                                    color: "var(--theme-active-text)", fontWeight: 700, cursor: "pointer"
                                                 }}>
                                             Save
                                         </button>
@@ -447,7 +445,7 @@ const CourseDetail = () => {
             )}
 
             {/* AI Assistant — floating */}
-            <AIAssistant courseName={course.title} lessonContent={lessonContent} />
+            <AIAssistant key={course.id} courseName={course.title} lessonContent={lessonContent} />
         </div>
     );
 };

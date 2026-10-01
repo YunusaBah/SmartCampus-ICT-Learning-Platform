@@ -15,10 +15,11 @@ const Sidebar = ({ open, onClose }) => {
         navigate("/login");
     };
 
-    const link = (to, label) => (
+    const link = (to, label, end = false) => (
         <li>
             <NavLink
                 to={to}
+                end={end}
                 className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
                 onClick={handleNavClick}
             >
@@ -33,33 +34,51 @@ const Sidebar = ({ open, onClose }) => {
             <p className="role-badge">{user?.role}</p>
 
             <nav>
-                <ul>
-                    {link("/dashboard", "Dashboard")}
+                <div className="sidebar-group">
+                    <h4 className="sidebar-group-title">Overview</h4>
+                    <ul>{link("/dashboard", "Dashboard")}</ul>
+                </div>
 
-                    {isStudent && (
-                        <>
+                {isStudent && (
+                    <div className="sidebar-group">
+                        <h4 className="sidebar-group-title">Learning</h4>
+                        <ul>
                             {link("/join", "+ Join a Class")}
-                            {link("/courses", "My Classes")}
+                            {link("/courses", "My Classes", true)}
                             {link("/assignments", "Assignments")}
                             {link("/grades", "My Grades")}
-                        </>
-                    )}
+                        </ul>
+                    </div>
+                )}
 
-                    {isStaff && (
-                        <>
-                            {link("/courses", "My Courses")}
+                {isStaff && (
+                    <div className="sidebar-group">
+                        <h4 className="sidebar-group-title">Teaching</h4>
+                        <ul>
+                            {link("/courses", "My Courses", true)}
+                            {link("/students", "My Students")}
                             {link("/assignments", "Assignments & Grading")}
-                        </>
-                    )}
+                        </ul>
+                    </div>
+                )}
 
-                    {isAdmin && link("/admin", "Admin Panel")}
+                {isAdmin && (
+                    <div className="sidebar-group">
+                        <h4 className="sidebar-group-title">Administration</h4>
+                        <ul>{link("/admin", "Admin Panel")}</ul>
+                    </div>
+                )}
 
-                    <li>
-                        <button type="button" className="nav-link link-btn" onClick={handleLogout}>
-                            Logout
-                        </button>
-                    </li>
-                </ul>
+                <div className="sidebar-group sidebar-account">
+                    <h4 className="sidebar-group-title">Account</h4>
+                    <ul>
+                        <li>
+                            <button type="button" className="nav-link link-btn" onClick={handleLogout}>
+                                Logout
+                            </button>
+                        </li>
+                    </ul>
+                </div>
             </nav>
         </aside>
     );

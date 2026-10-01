@@ -68,11 +68,11 @@ const Register = () => {
                 />
 
                 <div style={{
-                    borderTop: "1px solid #1e3358",
+                    borderTop: "1px solid var(--theme-border)",
                     marginTop: 16,
                     paddingTop: 16
                 }}>
-                    <p style={{ color: "#9fb3d1", fontSize: "0.85rem", marginBottom: 8 }}>
+                    <p style={{ color: "var(--theme-muted)", fontSize: "0.85rem", marginBottom: 8 }}>
                         Are you a lecturer? Enter your lecturer code below.
                         Leave empty to register as a student.
                     </p>

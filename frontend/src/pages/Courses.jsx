@@ -10,25 +10,30 @@ const Courses = () => {
     const [loading, setLoading] = useState(true);
     const [copied, setCopied] = useState(null);
     const [msg, setMsg] = useState("");
+    const [refreshKey, setRefreshKey] = useState(0);
 
-    const loadData = async () => {
-        setLoading(true);
-        try {
-            if (isStaff) {
-                const res = await API.get("/courses/my");
-                setMyCourses(res.data);
-            } else {
-                const res = await API.get("/enrollments/my-courses");
-                setMyCourses(res.data.map(e => e.course).filter(Boolean));
+    useEffect(() => {
+        let active = true;
+
+        const loadData = async () => {
+            try {
+                if (isStaff) {
+                    const res = await API.get("/courses/my");
+                    if (active) setMyCourses(res.data);
+                } else {
+                    const res = await API.get("/enrollments/my-courses");
+                    if (active) setMyCourses(res.data.map(e => e.course).filter(Boolean));
+                }
+            } catch (err) {
+                console.error(err);
+            } finally {
+                if (active) setLoading(false);
             }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
+        };
 
-    useEffect(() => { loadData(); }, [isStaff]);
+        loadData();
+        return () => { active = false; };
+    }, [isStaff, refreshKey]);
 
     const handleCreate = async (e) => {
         e.preventDefault();
@@ -37,7 +42,7 @@ const Courses = () => {
             setForm({ title: "", description: "" });
             setMsg("Course created successfully!");
             setTimeout(() => setMsg(""), 3000);
-            loadData();
+            setRefreshKey((key) => key + 1);
         } catch (err) {
             setMsg(err.response?.data?.message || "Failed to create course");
         }
@@ -78,21 +83,21 @@ const Courses = () => {
                 </form>
 
                 <div className="card-grid">
-                    {myCourses.length === 0 && <p style={{ color: "#9fb3d1" }}>No courses yet. Create your first one above.</p>}
+                    {myCourses.length === 0 && <p style={{ color: "var(--theme-muted)" }}>No courses yet. Create your first one above.</p>}
                     {myCourses.map(course => (
                         <div className="card" key={course.id}>
                             <h3>{course.title}</h3>
-                            <p style={{ color: "#9fb3d1", fontSize: "0.9rem", margin: "6px 0 12px" }}>{course.description}</p>
+                            <p style={{ color: "var(--theme-muted)", fontSize: "0.9rem", margin: "6px 0 12px" }}>{course.description}</p>
 
                             {/* Class code box */}
                             {course.classCode && (
                                 <div style={{
-                                    background: "#0b1220", borderRadius: 8,
+                                    background: "var(--theme-bg)", borderRadius: 8,
                                     padding: "10px 14px", marginBottom: 12,
                                     display: "flex", alignItems: "center", justifyContent: "space-between"
                                 }}>
                                     <div>
-                                        <p style={{ color: "#9fb3d1", fontSize: "0.75rem", marginBottom: 2 }}>CLASS CODE</p>
+                                        <p style={{ color: "var(--theme-muted)", fontSize: "0.75rem", marginBottom: 2 }}>CLASS CODE</p>
                                         <p style={{ color: "#00d4ff", fontWeight: 700, letterSpacing: "0.25em", fontSize: "1.2rem" }}>
                                             {course.classCode}
                                         </p>
@@ -100,9 +105,9 @@ const Courses = () => {
                                     <button
                                         onClick={() => copyCode(course.classCode)}
                                         style={{
-                                            background: copied === course.classCode ? "#00d464" : "#16233f",
+                                            background: copied === course.classCode ? "#00d464" : "var(--theme-panel-raised)",
                                             border: "none", borderRadius: 6, padding: "6px 12px",
-                                            color: "white", cursor: "pointer", fontSize: "0.8rem"
+                                            color: "var(--theme-text)", cursor: "pointer", fontSize: "0.8rem"
                                         }}>
                                         {copied === course.classCode ? "Copied!" : "Copy"}
                                     </button>
@@ -127,7 +132,7 @@ const Courses = () => {
 
             <div className="card-grid">
                 {myCourses.length === 0 && (
-                    <div style={{ color: "#9fb3d1" }}>
+                    <div style={{ color: "var(--theme-muted)" }}>
                         <p>You haven't joined any classes yet.</p>
                         <Link to="/join" className="btn btn-inline" style={{ marginTop: 12 }}>
                             + Join a Class
@@ -137,7 +142,7 @@ const Courses = () => {
                 {myCourses.map(course => (
                     <div className="card" key={course.id}>
                         <h3>{course.title}</h3>
-                        <p style={{ color: "#9fb3d1", fontSize: "0.9rem", margin: "6px 0 12px" }}>{course.description}</p>
+                        <p style={{ color: "var(--theme-muted)", fontSize: "0.9rem", margin: "6px 0 12px" }}>{course.description}</p>
                         <Link to={`/courses/${course.id}`} className="btn btn-inline">Open Classroom</Link>
                     </div>
                 ))}

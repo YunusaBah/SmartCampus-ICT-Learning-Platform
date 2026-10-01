@@ -4,6 +4,7 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
+require("./config/env");
 
 const authRoutes = require("./Routes/authRoutes");
 const enrollmentRoutes = require("./Routes/enrollmentRoutes");
@@ -14,8 +15,6 @@ const courseRoutes = require("./Routes/courseRoutes");
 const dashboardRoutes = require("./Routes/dashboardRoutes");
 const userRoutes = require("./Routes/userRoutes");
 const aiRoutes = require("./Routes/aiRoutes");
-
-require("dotenv").config();
 
 const app = express();
 
@@ -43,7 +42,15 @@ app.use(cors({
     },
     credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
+app.use((req, res, next) => {
+    if (req.body === undefined) {
+        req.body = {};
+    } else if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        return res.status(400).json({ message: "Request body must be a JSON object" });
+    }
+    next();
+});
 app.use(morgan("dev"));
 app.use(limiter);
 
@@ -69,13 +76,27 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/ai", aiRoutes);
 
+app.use((req, res) => {
+    res.status(404).json({ message: "Route not found" });
+});
+
 app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+
     if (err.message === "Invalid file type") {
         return res.status(400).json({ message: err.message });
     }
 
     if (err.code === "LIMIT_FILE_SIZE") {
         return res.status(400).json({ message: "File too large (max 10MB)" });
+    }
+
+    if (err.type === "entity.too.large") {
+        return res.status(413).json({ message: "Request body is too large" });
+    }
+
+    if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
+        return res.status(400).json({ message: "Invalid JSON body" });
     }
 
     console.error(err);

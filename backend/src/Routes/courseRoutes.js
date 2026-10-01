@@ -15,6 +15,13 @@ router.get(
 );
 
 router.get(
+    "/students",
+    authMiddleware,
+    requireRole("lecturer", "admin"),
+    courseController.getMyStudents
+);
+
+router.get(
     "/:id",
     authMiddleware,
     courseController.getCourseDetail

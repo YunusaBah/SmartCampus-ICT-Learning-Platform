@@ -92,7 +92,8 @@ exports.getStats = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Failed to load dashboard stats:", error);
+        res.status(500).json({ message: "Failed to load dashboard stats" });
     }
 };
 
@@ -100,7 +101,11 @@ exports.getGrades = async (req, res) => {
     try {
         const quizResults = await QuizResult.findAll({
             where: { studentId: req.user.id },
-            include: [{ model: Quiz, as: "quiz" }],
+            include: [{
+                model: Quiz,
+                as: "quiz",
+                attributes: { exclude: ["correctAnswer"] }
+            }],
             order: [["id", "DESC"]]
         });
 
@@ -119,6 +124,7 @@ exports.getGrades = async (req, res) => {
         res.json({ quizResults, submissions });
 
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Failed to load grades:", error);
+        res.status(500).json({ message: "Failed to load grades" });
     }
 };

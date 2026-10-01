@@ -4,74 +4,99 @@ const Quiz = require("../models/Quiz");
 const Assignment = require("../models/Assignment");
 const Enrollment = require("../models/Enrollment");
 const User = require("../models/User");
-
-const canManageCourse = (course, user) =>
-    user.role === "admin" || course.lecturerId === user.id;
-
-const generateClassCode = async () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let code, exists;
-    do {
-        code = Array.from({ length: 6 }, () =>
-            chars[Math.floor(Math.random() * chars.length)]
-        ).join("");
-        exists = await Course.findOne({ where: { classCode: code } });
-    } while (exists);
-    return code;
-};
+const getCourseAccess = require("../utils/courseAccess");
+const generateClassCode = require("../utils/generateClassCode");
 
 exports.createCourse = async (req, res) => {
     try {
         const { title, description } = req.body;
-        if (!title || !description)
+        if (typeof title !== "string" || !title.trim() ||
+            typeof description !== "string" || !description.trim()) {
             return res.status(400).json({ message: "Title and description are required" });
+        }
 
         const classCode = await generateClassCode();
         const course = await Course.create({
-            title, description,
+            title: title.trim(),
+            description: description.trim(),
             lecturerId: req.user.id,
             classCode
         });
         res.status(201).json(course);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Failed to create course:", error);
+        res.status(500).json({ message: "Failed to create course" });
     }
 };
 
 exports.getCourses = async (req, res) => {
     try {
-        const courses = await Course.findAll({ order: [["id", "DESC"]] });
+        const courses = await Course.findAll({
+            attributes: { exclude: ["classCode"] },
+            order: [["id", "DESC"]]
+        });
         res.json(courses);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Failed to list courses:", error);
+        res.status(500).json({ message: "Failed to load courses" });
     }
 };
 
 exports.getMyCourses = async (req, res) => {
     try {
         const courses = await Course.findAll({
-            where: { lecturerId: req.user.id },
+            where: req.user.role === "admin" ? {} : { lecturerId: req.user.id },
             order: [["id", "DESC"]]
         });
         res.json(courses);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Failed to load managed courses:", error);
+        res.status(500).json({ message: "Failed to load courses" });
+    }
+};
+
+exports.getMyStudents = async (req, res) => {
+    try {
+        const courseWhere = req.user.role === "admin" ? {} : { lecturerId: req.user.id };
+        const courses = await Course.findAll({
+            where: courseWhere,
+            attributes: ["id", "title"],
+            include: [{
+                model: Enrollment,
+                as: "enrollments",
+                attributes: ["createdAt"],
+                include: [{
+                    model: User,
+                    as: "student",
+                    attributes: ["id", "fullName", "email"]
+                }]
+            }],
+            order: [["title", "ASC"], [{ model: Enrollment, as: "enrollments" }, "createdAt", "ASC"]]
+        });
+
+        const students = courses.flatMap((course) =>
+            course.enrollments
+                .filter((enrollment) => enrollment.student)
+                .map((enrollment) => ({
+                    ...enrollment.student.toJSON(),
+                    courseId: course.id,
+                    courseTitle: course.title,
+                    enrolledAt: enrollment.createdAt
+                }))
+        );
+
+        res.json(students);
+    } catch (error) {
+        console.error("Failed to load students:", error);
+        res.status(500).json({ message: "Failed to load students" });
     }
 };
 
 exports.getCourseDetail = async (req, res) => {
     try {
-        const course = await Course.findByPk(req.params.id);
-        if (!course) return res.status(404).json({ message: "Course not found" });
-
-        const isLecturer = canManageCourse(course, req.user);
-        const enrollment = await Enrollment.findOne({
-            where: { studentId: req.user.id, courseId: course.id }
-        });
-        const isEnrolled = Boolean(enrollment);
-
-        if (req.user.role === "student" && !isEnrolled)
-            return res.status(403).json({ message: "Join this class first using the class code" });
+        const access = await getCourseAccess(req.params.id, req.user);
+        if (access.status) return res.status(access.status).json({ message: access.message });
+        const { course, isManager, isEnrolled } = access;
 
         const lessons = await Lesson.findAll({
             where: { courseId: course.id },
@@ -80,7 +105,7 @@ exports.getCourseDetail = async (req, res) => {
 
         const quizzes = await Quiz.findAll({
             where: { courseId: course.id },
-            attributes: isLecturer ? undefined : { exclude: ["correctAnswer"] },
+            attributes: isManager ? undefined : { exclude: ["correctAnswer"] },
             order: [["id", "DESC"]]
         });
 
@@ -90,7 +115,7 @@ exports.getCourseDetail = async (req, res) => {
         });
 
         let students = [];
-        if (isLecturer) {
+        if (isManager) {
             const enrollments = await Enrollment.findAll({
                 where: { courseId: course.id },
                 include: [{
@@ -101,8 +126,19 @@ exports.getCourseDetail = async (req, res) => {
             students = enrollments.map(e => e.student);
         }
 
-        res.json({ course, lessons, quizzes, assignments, students, isLecturer, isEnrolled });
+        const courseData = course.toJSON();
+        if (!isManager) delete courseData.classCode;
+        res.json({
+            course: courseData,
+            lessons,
+            quizzes,
+            assignments,
+            students,
+            isLecturer: isManager,
+            isEnrolled
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Failed to load course:", error);
+        res.status(500).json({ message: "Failed to load course" });
     }
 };

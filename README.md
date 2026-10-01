@@ -4,6 +4,10 @@ Web semester project — React frontend, Express API, MySQL database.
 
 ## Local development
 
+Install the dependencies once from the `backend` and `frontend` folders, then
+run `npm run dev` from the repository root to start both servers together.
+Use `Ctrl+C` to stop them.
+
 ### Backend
 
 ```bash

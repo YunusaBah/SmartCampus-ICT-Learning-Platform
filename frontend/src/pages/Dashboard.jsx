@@ -44,7 +44,7 @@ const Dashboard = () => {
                     </div>
                     <div className="card">
                         <h3>Pending Grades</h3>
-                        <p style={{ fontSize: "2rem", fontWeight: 700, color: stats.pendingGrades > 0 ? "#f0a500" : "white" }}>
+                        <p style={{ fontSize: "2rem", fontWeight: 700, color: stats.pendingGrades > 0 ? "#f0a500" : "var(--theme-text)" }}>
                             {stats.pendingGrades}
                         </p>
                     </div>

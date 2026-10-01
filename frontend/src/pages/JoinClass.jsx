@@ -28,7 +28,7 @@ const JoinClass = () => {
     return (
         <div className="form-box">
             <h2>Join a Class</h2>
-            <p style={{ color: "#9fb3d1", marginBottom: 20, fontSize: "0.9rem" }}>
+            <p style={{ color: "var(--theme-muted)", marginBottom: 20, fontSize: "0.9rem" }}>
                 Enter the 6-character code your lecturer gave you.
             </p>
 

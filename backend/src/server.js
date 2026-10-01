@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("./config/env");
 
 const fs = require("fs");
 const path = require("path");
@@ -12,10 +12,21 @@ if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
+
+const validateEnvironment = () => {
+    if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32 ||
+        process.env.JWT_SECRET === "change_this_to_a_long_random_secret") {
+        throw new Error("Set JWT_SECRET to a random value of at least 32 characters");
+    }
+    if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65535) {
+        throw new Error("PORT must be a valid port number");
+    }
+};
 
 const startServer = async () => {
     try {
+        validateEnvironment();
         await connectDB();
         await sequelize.sync();
         console.log("Database synced");
