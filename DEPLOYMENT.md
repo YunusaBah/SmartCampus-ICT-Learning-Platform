@@ -172,7 +172,7 @@ VITE_API_URL = https://YOUR-RENDER-URL.onrender.com
 1. In **Render** → your API service → **Environment**, set:
 
 ```
-CLIENT_URL=https://YOUR-NETLIFY-URL.netlify.app
+CLIENT_URL=https://charming-cucurucho-472417.netlify.app
 ```
 
 For multiple URLs (e.g. preview + production), use commas:
@@ -225,12 +225,12 @@ Vite bakes this in at **build time**. After changing it on Netlify, trigger a **
 
 ### CORS / “Network Error” in the browser
 
-- `CLIENT_URL` on Render must exactly match your Netlify URL (including `https://`, no trailing slash).
+- `CLIENT_URL` on Render should exactly match your Netlify URL (including `https://`, no trailing slash). The current production Netlify URL is allowed by default; set this variable for additional URLs or previews.
 - Redeploy the backend after changing `CLIENT_URL`.
 
 ### Frontend still calls localhost
 
-- `VITE_API_URL` was not set when Netlify built the site. Set the variable and redeploy.
+- `VITE_API_URL` should be the Render API origin (`https://smartcampus-api.onrender.com`), with no trailing slash or `/api` suffix. It defaults to that production origin if unset. Set the variable and redeploy after changing it.
 
 ### 404 on page refresh (e.g. `/dashboard`)
 
