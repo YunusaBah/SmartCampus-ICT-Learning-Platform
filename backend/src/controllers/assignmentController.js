@@ -6,6 +6,8 @@ const Course = require("../models/Course");
 const User = require("../models/User");
 const getCourseAccess = require("../utils/courseAccess");
 const discardUpload = require("../utils/discardUpload");
+const { sequelize } = require("../config/db");
+const createNotifications = require("../utils/createNotifications");
 
 exports.createAssignment = async (req, res) => {
     try {
@@ -22,15 +24,27 @@ exports.createAssignment = async (req, res) => {
         if (!course) {
             return res.status(404).json({ message: "Course not found" });
         }
-        if (course.lecturerId !== req.user.id && req.user.role !== "admin") {
+        if (course.lecturerId !== req.user.id) {
             return res.status(403).json({ message: "You can only add assignments to your courses" });
         }
 
-        const assignment = await Assignment.create({
-            title: title.trim(),
-            description: description.trim(),
-            dueDate: new Date(dueDate),
-            courseId
+        const assignment = await sequelize.transaction(async (transaction) => {
+            const created = await Assignment.create({
+                title: title.trim(),
+                description: description.trim(),
+                dueDate: new Date(dueDate),
+                courseId
+            }, { transaction });
+            await createNotifications({
+                courseId: course.id,
+                type: "assignment",
+                title: `New assignment: ${created.title}`,
+                body: created.description.slice(0, 500),
+                resourceType: "assignment",
+                resourceId: created.id,
+                transaction
+            });
+            return created;
         });
 
         res.status(201).json({
@@ -102,7 +116,7 @@ exports.getCourseSubmissions = async (req, res) => {
         if (!course) {
             return res.status(404).json({ message: "Course not found" });
         }
-        if (course.lecturerId !== req.user.id && req.user.role !== "admin") {
+        if (course.lecturerId !== req.user.id) {
             return res.status(403).json({ message: "Access denied" });
         }
 
@@ -133,9 +147,10 @@ exports.getCourseSubmissions = async (req, res) => {
 
 exports.gradeSubmission = async (req, res) => {
     try {
-        const { grade } = req.body;
+        const { grade, feedback } = req.body;
 
-        if (typeof grade !== "string" || !grade.trim() || grade.trim().length > 50) {
+        if (typeof grade !== "string" || !grade.trim() || grade.trim().length > 50 ||
+            (feedback !== undefined && (typeof feedback !== "string" || feedback.length > 20000))) {
             return res.status(400).json({ message: "Grade is required" });
         }
 
@@ -158,12 +173,24 @@ exports.gradeSubmission = async (req, res) => {
             return res.status(404).json({ message: "Course not found" });
         }
 
-        if (course.lecturerId !== req.user.id && req.user.role !== "admin") {
+        if (course.lecturerId !== req.user.id) {
             return res.status(403).json({ message: "Access denied" });
         }
 
         submission.grade = grade.trim();
-        await submission.save();
+        if (feedback !== undefined) submission.feedback = feedback.trim() || null;
+        await sequelize.transaction(async (transaction) => {
+            await submission.save({ transaction });
+            await createNotifications({
+                userIds: [submission.studentId],
+                type: "grade",
+                title: "Assignment graded",
+                body: feedback?.trim() || `Your assignment grade is ${submission.grade}.`,
+                resourceType: "submission",
+                resourceId: submission.id,
+                transaction
+            });
+        });
 
         res.json({
             message: "Grade updated",
@@ -174,6 +201,19 @@ exports.gradeSubmission = async (req, res) => {
         console.error("Failed to grade submission:", error);
         res.status(500).json({ message: "Failed to update grade" });
     }
+};
+
+exports.getMySubmissions = async (req, res) => {
+    const submissions = await Submission.findAll({
+        where: { studentId: req.user.id },
+        include: [{
+            model: Assignment,
+            as: "assignment",
+            attributes: ["id", "title", "dueDate", "courseId"]
+        }],
+        order: [["createdAt", "DESC"]]
+    });
+    res.json(submissions);
 };
 
 exports.submitAssignment = async (req, res) => {

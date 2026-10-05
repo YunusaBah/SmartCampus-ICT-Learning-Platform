@@ -6,6 +6,7 @@ const path = require("path");
 const app = require("./app");
 const { sequelize, connectDB } = require("./config/db");
 require("./models/associations");
+const runMigrations = require("./utils/runMigrations");
 
 const uploadsDir = path.join(__dirname, "../uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -28,6 +29,7 @@ const startServer = async () => {
     try {
         validateEnvironment();
         await connectDB();
+        await runMigrations();
         await sequelize.sync();
         console.log("Database synced");
 

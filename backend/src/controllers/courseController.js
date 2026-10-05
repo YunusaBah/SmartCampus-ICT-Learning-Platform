@@ -6,13 +6,24 @@ const Enrollment = require("../models/Enrollment");
 const User = require("../models/User");
 const getCourseAccess = require("../utils/courseAccess");
 const generateClassCode = require("../utils/generateClassCode");
+const Department = require("../models/Department");
 
 exports.createCourse = async (req, res) => {
     try {
-        const { title, description } = req.body;
+        const { title, description, departmentId } = req.body;
         if (typeof title !== "string" || !title.trim() ||
             typeof description !== "string" || !description.trim()) {
             return res.status(400).json({ message: "Title and description are required" });
+        }
+        let validDepartmentId = null;
+        if (departmentId !== undefined && departmentId !== null) {
+            const parsedDepartmentId = Number(departmentId);
+            if (!Number.isSafeInteger(parsedDepartmentId) || parsedDepartmentId <= 0) {
+                return res.status(400).json({ message: "Department not found" });
+            }
+            const department = await Department.findByPk(parsedDepartmentId);
+            if (!department) return res.status(400).json({ message: "Department not found" });
+            validDepartmentId = department.id;
         }
 
         const classCode = await generateClassCode();
@@ -20,7 +31,8 @@ exports.createCourse = async (req, res) => {
             title: title.trim(),
             description: description.trim(),
             lecturerId: req.user.id,
-            classCode
+            classCode,
+            departmentId: validDepartmentId
         });
         res.status(201).json(course);
     } catch (error) {
@@ -33,6 +45,15 @@ exports.getCourses = async (req, res) => {
     try {
         const courses = await Course.findAll({
             attributes: { exclude: ["classCode"] },
+            include: [{
+                model: User,
+                as: "lecturer",
+                attributes: ["id", "fullName"]
+            }, {
+                model: Department,
+                as: "department",
+                attributes: ["id", "name"]
+            }],
             order: [["id", "DESC"]]
         });
         res.json(courses);
@@ -45,7 +66,8 @@ exports.getCourses = async (req, res) => {
 exports.getMyCourses = async (req, res) => {
     try {
         const courses = await Course.findAll({
-            where: req.user.role === "admin" ? {} : { lecturerId: req.user.id },
+            where: { lecturerId: req.user.id },
+            include: [{ model: Department, as: "department", attributes: ["id", "name"] }],
             order: [["id", "DESC"]]
         });
         res.json(courses);
@@ -57,9 +79,8 @@ exports.getMyCourses = async (req, res) => {
 
 exports.getMyStudents = async (req, res) => {
     try {
-        const courseWhere = req.user.role === "admin" ? {} : { lecturerId: req.user.id };
         const courses = await Course.findAll({
-            where: courseWhere,
+            where: { lecturerId: req.user.id },
             attributes: ["id", "title"],
             include: [{
                 model: Enrollment,
@@ -100,7 +121,7 @@ exports.getCourseDetail = async (req, res) => {
 
         const lessons = await Lesson.findAll({
             where: { courseId: course.id },
-            order: [["id", "DESC"]]
+            order: [["moduleId", "ASC"], ["orderIndex", "ASC"], ["id", "ASC"]]
         });
 
         const quizzes = await Quiz.findAll({
@@ -127,6 +148,9 @@ exports.getCourseDetail = async (req, res) => {
         }
 
         const courseData = course.toJSON();
+        courseData.department = course.departmentId
+            ? await Department.findByPk(course.departmentId, { attributes: ["id", "name"] })
+            : null;
         if (!isManager) delete courseData.classCode;
         res.json({
             course: courseData,

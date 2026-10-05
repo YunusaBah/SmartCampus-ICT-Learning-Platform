@@ -12,8 +12,7 @@ const getCourseAccess = async (courseId, user) => {
         return { status: 404, message: "Course not found" };
     }
 
-    const isManager = user.role === "admin" ||
-        (user.role === "lecturer" && course.lecturerId === user.id);
+    const isManager = user.role === "lecturer" && course.lecturerId === user.id;
     const enrollment = user.role === "student"
         ? await Enrollment.findOne({ where: { studentId: user.id, courseId: id } })
         : null;

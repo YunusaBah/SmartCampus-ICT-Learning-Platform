@@ -28,7 +28,7 @@ exports.createQuiz = async (req, res) => {
         if (!course) {
             return res.status(404).json({ message: "Course not found" });
         }
-        if (course.lecturerId !== req.user.id && req.user.role !== "admin") {
+        if (course.lecturerId !== req.user.id) {
             return res.status(403).json({ message: "You can only add quizzes to your courses" });
         }
 

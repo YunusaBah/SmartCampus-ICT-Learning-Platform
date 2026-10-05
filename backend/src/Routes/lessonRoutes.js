@@ -5,11 +5,12 @@ const lessonController = require("../controllers/lessonController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const requireRole = require("../middlewares/roleMiddleware");
 const upload = require("../config/multer");
+const lmsController = require("../controllers/lmsController");
 
 router.post(
     "/",
     authMiddleware,
-    requireRole("lecturer", "admin"),
+    requireRole("lecturer"),
     upload.single("file"),
     lessonController.createLesson
 );
@@ -18,6 +19,20 @@ router.get(
     "/course/:courseId",
     authMiddleware,
     lessonController.getLessons
+);
+
+router.patch(
+    "/:id/order",
+    authMiddleware,
+    requireRole("lecturer"),
+    lmsController.setLessonOrder
+);
+
+router.post(
+    "/:lessonId/progress",
+    authMiddleware,
+    requireRole("student"),
+    lmsController.completeLesson
 );
 
 module.exports = router;

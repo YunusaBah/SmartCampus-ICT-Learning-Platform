@@ -1,0 +1,38 @@
+const express = require("express");
+const router = express.Router();
+const authMiddleware = require("../middlewares/authMiddleware");
+const requireRole = require("../middlewares/roleMiddleware");
+const lmsController = require("../controllers/lmsController");
+
+router.use(authMiddleware);
+
+router.get("/courses/:courseId/modules", lmsController.listModules);
+router.post("/courses/:courseId/modules", requireRole("lecturer"), lmsController.createModule);
+router.patch("/modules/:id", requireRole("lecturer"), lmsController.updateModule);
+router.delete("/modules/:id", requireRole("lecturer"), lmsController.deleteModule);
+router.get("/courses/:courseId/progress", lmsController.getCourseProgress);
+
+router.get("/courses/:courseId/announcements", lmsController.listAnnouncements);
+router.post("/courses/:courseId/announcements", requireRole("lecturer"), lmsController.createAnnouncement);
+router.patch("/announcements/:id", requireRole("lecturer"), lmsController.updateAnnouncement);
+router.delete("/announcements/:id", requireRole("lecturer"), lmsController.deleteAnnouncement);
+
+router.get("/courses/:courseId/conversations", lmsController.listConversations);
+router.get("/courses/:courseId/conversations/:userId", lmsController.listMessages);
+router.post("/courses/:courseId/messages", lmsController.sendMessage);
+
+router.get("/notifications", lmsController.listNotifications);
+router.patch("/notifications/read-all", lmsController.markAllNotificationsRead);
+router.patch("/notifications/:id/read", lmsController.markNotificationRead);
+
+router.get("/calendar", lmsController.listMyCalendar);
+router.get("/courses/:courseId/calendar", lmsController.listCalendarEvents);
+router.post("/courses/:courseId/calendar", requireRole("lecturer"), lmsController.createCalendarEvent);
+router.patch("/calendar/:id", requireRole("lecturer"), lmsController.updateCalendarEvent);
+router.delete("/calendar/:id", requireRole("lecturer"), lmsController.deleteCalendarEvent);
+
+router.get("/departments", lmsController.listDepartments);
+router.get("/certificates", requireRole("student"), lmsController.listCertificates);
+router.post("/courses/:courseId/certificate", requireRole("student"), lmsController.issueCertificate);
+
+module.exports = router;

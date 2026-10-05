@@ -13,8 +13,8 @@ const quizRoutes = require("./Routes/quizRoutes");
 const assignmentRoutes = require("./Routes/assignmentRoutes");
 const courseRoutes = require("./Routes/courseRoutes");
 const dashboardRoutes = require("./Routes/dashboardRoutes");
-const userRoutes = require("./Routes/userRoutes");
 const aiRoutes = require("./Routes/aiRoutes");
+const lmsRoutes = require("./Routes/lmsRoutes");
 
 const app = express();
 
@@ -76,8 +76,8 @@ app.use("/api/lessons", lessonRoutes);
 app.use("/api/quizzes", quizRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/users", userRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api", lmsRoutes);
 
 app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });

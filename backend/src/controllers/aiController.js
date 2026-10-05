@@ -19,7 +19,7 @@ exports.askAI = async (req, res) => {
         const lessonContent = typeof context?.lessonContent === "string"
             ? context.lessonContent.slice(0, 12000)
             : "";
-        const isStaff = req.user.role === "lecturer" || req.user.role === "admin";
+        const isStaff = req.user.role === "lecturer";
 
         let systemPrompt;
 

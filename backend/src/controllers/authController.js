@@ -1,3 +1,4 @@
+const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
@@ -92,7 +93,7 @@ exports.login = async (req, res) => {
         }
 
         const token = jwt.sign(
-            { id: user.id, role: user.role },
+            { id: user.id, role: user.role, tokenVersion: user.tokenVersion ?? 0 },
             process.env.JWT_SECRET,
             { expiresIn: "1d" }
         );
@@ -106,5 +107,86 @@ exports.login = async (req, res) => {
     } catch (error) {
         console.error("Login failed:", error);
         res.status(500).json({ message: "Login failed" });
+    }
+};
+
+exports.updateProfile = async (req, res) => {
+    try {
+        const { fullName, email } = req.body;
+
+        if (typeof fullName !== "string" || !fullName.trim() ||
+            typeof email !== "string" || !email.trim()) {
+            return res.status(400).json({ message: "Name and email are required" });
+        }
+
+        const normalizedName = fullName.trim();
+        const normalizedEmail = email.trim().toLowerCase();
+        if (normalizedName.length > 255 ||
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
+            normalizedEmail.length > 254) {
+            return res.status(400).json({ message: "Enter a valid name and email address" });
+        }
+
+        const existingUser = await User.findOne({
+            where: {
+                email: normalizedEmail,
+                id: { [Op.ne]: req.user.id }
+            }
+        });
+        if (existingUser) {
+            return res.status(409).json({ message: "An account with this email already exists" });
+        }
+
+        const user = await User.findByPk(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        user.fullName = normalizedName;
+        user.email = normalizedEmail;
+        await user.save();
+
+        return res.json({
+            message: "Profile updated successfully",
+            user: sanitizeUser(user)
+        });
+    } catch (error) {
+        if (error.name === "SequelizeUniqueConstraintError") {
+            return res.status(409).json({ message: "An account with this email already exists" });
+        }
+        console.error("Failed to update profile:", error);
+        return res.status(500).json({ message: "Failed to update profile" });
+    }
+};
+
+exports.updatePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        if (typeof currentPassword !== "string" || !currentPassword ||
+            typeof newPassword !== "string" || !newPassword) {
+            return res.status(400).json({ message: "Current and new passwords are required" });
+        }
+
+        if (newPassword.length < 6 || Buffer.byteLength(newPassword, "utf8") > 72) {
+            return res.status(400).json({ message: "New password must be 6-72 bytes" });
+        }
+
+        const user = await User.findByPk(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const matches = await bcrypt.compare(currentPassword, user.password);
+        if (!matches) {
+            return res.status(400).json({ message: "Current password is incorrect" });
+        }
+
+        user.password = await bcrypt.hash(newPassword, 10);
+        user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+        await user.save();
+        return res.json({ message: "Password updated successfully" });
+    } catch (error) {
+        console.error("Failed to update password:", error);
+        return res.status(500).json({ message: "Failed to update password" });
     }
 };

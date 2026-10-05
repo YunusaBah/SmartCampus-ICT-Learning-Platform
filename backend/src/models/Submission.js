@@ -27,6 +27,11 @@ const Submission = sequelize.define("Submission", {
     grade: {
         type: DataTypes.STRING,
         defaultValue: "Pending"
+    },
+
+    feedback: {
+        type: DataTypes.TEXT,
+        allowNull: true
     }
 
 });

@@ -2,14 +2,16 @@ const Lesson = require("../models/Lesson");
 const Course = require("../models/Course");
 const getCourseAccess = require("../utils/courseAccess");
 const discardUpload = require("../utils/discardUpload");
+const Module = require("../models/Module");
 
 exports.createLesson = async (req, res) => {
     try {
-        const { title, content, videoUrl, courseId } = req.body;
+        const { title, content, videoUrl, courseId, moduleId, orderIndex } = req.body;
 
         if (typeof title !== "string" || !title.trim() ||
             typeof content !== "string" || !content.trim() ||
-            !Number.isSafeInteger(Number(courseId)) || Number(courseId) <= 0) {
+            !Number.isSafeInteger(Number(courseId)) || Number(courseId) <= 0 ||
+            (orderIndex !== undefined && (!Number.isInteger(orderIndex) || orderIndex < 0))) {
             await discardUpload(req.file);
             return res.status(400).json({ message: "Title, content, and courseId are required" });
         }
@@ -19,16 +21,34 @@ exports.createLesson = async (req, res) => {
             await discardUpload(req.file);
             return res.status(404).json({ message: "Course not found" });
         }
-        if (course.lecturerId !== req.user.id && req.user.role !== "admin") {
+        if (course.lecturerId !== req.user.id) {
             await discardUpload(req.file);
             return res.status(403).json({ message: "You can only add lessons to your courses" });
+        }
+        let validModuleId = null;
+        if (moduleId !== undefined && moduleId !== null) {
+            const parsedModuleId = Number(moduleId);
+            if (!Number.isSafeInteger(parsedModuleId) || parsedModuleId <= 0) {
+                await discardUpload(req.file);
+                return res.status(400).json({ message: "Invalid module ID" });
+            }
+            const module = await Module.findOne({
+                where: { id: parsedModuleId, courseId: course.id }
+            });
+            if (!module) {
+                await discardUpload(req.file);
+                return res.status(400).json({ message: "Module must belong to the lesson course" });
+            }
+            validModuleId = module.id;
         }
 
         const lesson = await Lesson.create({
             title: title.trim(),
             content: content.trim(),
             videoUrl: typeof videoUrl === "string" && videoUrl.trim() ? videoUrl.trim() : null,
-            courseId,
+            courseId: course.id,
+            moduleId: validModuleId,
+            orderIndex: orderIndex ?? 0,
             fileUrl: req.file ? `/uploads/${req.file.filename}` : null
         });
 
@@ -51,7 +71,7 @@ exports.getLessons = async (req, res) => {
 
         const lessons = await Lesson.findAll({
             where: { courseId: access.course.id },
-            order: [["id", "DESC"]]
+            order: [["moduleId", "ASC"], ["orderIndex", "ASC"], ["id", "ASC"]]
         });
 
         res.json(lessons);

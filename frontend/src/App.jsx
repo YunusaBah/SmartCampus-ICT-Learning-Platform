@@ -14,9 +14,13 @@ import CourseDetail from "./pages/CourseDetail";
 import MyCourses from "./pages/MyCourses";
 import Assignments from "./pages/Assignments";
 import Grades from "./pages/Grades";
-import Admin from "./pages/Admin";
 import JoinClass from "./pages/JoinClass";
 import Students from "./pages/Students";
+import Settings from "./pages/Settings";
+import Calendar from "./pages/Calendar";
+import Announcements from "./pages/Announcements";
+import Messages from "./pages/Messages";
+import Certificates from "./pages/Certificates";
 
 import "./styles/global.css";
 
@@ -24,7 +28,7 @@ function App() {
     const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 768);
     const [theme, setTheme] = useState(() => {
         const savedTheme = localStorage.getItem("theme");
-        return savedTheme === "light" ? "light" : "dark";
+        return savedTheme === "dark" ? "dark" : "light";
     });
     const closeSidebar = () => setSidebarOpen(false);
     const toggleSidebar = () => setSidebarOpen(prev => !prev);
@@ -33,6 +37,11 @@ function App() {
         document.documentElement.dataset.theme = theme;
         localStorage.setItem("theme", theme);
     }, [theme]);
+
+    useEffect(() => {
+        document.documentElement.dataset.reducedMotion =
+            localStorage.getItem("reducedMotion") === "true" ? "true" : "false";
+    }, []);
 
     return (
         <BrowserRouter>
@@ -58,6 +67,11 @@ function App() {
                         <Route index element={<Navigate to="dashboard" replace />} />
                         <Route path="dashboard" element={<Dashboard />} />
                         <Route path="courses" element={<Courses />} />
+                        <Route path="catalog" element={
+                            <RoleRoute roles={["student"]}>
+                                <Courses catalog />
+                            </RoleRoute>
+                        } />
                         <Route path="courses/:courseId" element={<CourseDetail />} />
                         <Route path="join" element={
                             <RoleRoute roles={["student"]}>
@@ -71,7 +85,7 @@ function App() {
                         } />
                         <Route path="assignments" element={<Assignments />} />
                         <Route path="students" element={
-                            <RoleRoute roles={["lecturer", "admin"]}>
+                            <RoleRoute roles={["lecturer"]}>
                                 <Students />
                             </RoleRoute>
                         } />
@@ -80,11 +94,15 @@ function App() {
                                 <Grades />
                             </RoleRoute>
                         } />
-                        <Route path="admin" element={
-                            <RoleRoute roles={["admin"]}>
-                                <Admin />
+                        <Route path="calendar" element={<Calendar />} />
+                        <Route path="announcements" element={<Announcements />} />
+                        <Route path="messages" element={<Messages />} />
+                        <Route path="certificates" element={
+                            <RoleRoute roles={["student"]}>
+                                <Certificates />
                             </RoleRoute>
                         } />
+                        <Route path="settings" element={<Settings theme={theme} setTheme={setTheme} />} />
                     </Route>
                 </Route>
 

@@ -28,9 +28,12 @@ const authMiddleware = async (req, res, next) => {
     }
 
     try {
-        const user = await User.findByPk(payload.id, { attributes: ["id", "role"] });
+        const user = await User.findByPk(payload.id, { attributes: ["id", "role", "tokenVersion"] });
         if (!user) {
             return res.status(401).json({ message: "User no longer exists" });
+        }
+        if ((payload.tokenVersion ?? 0) !== user.tokenVersion) {
+            return res.status(401).json({ message: "Session has been revoked; please log in again" });
         }
         req.user = { id: user.id, role: user.role };
         return next();

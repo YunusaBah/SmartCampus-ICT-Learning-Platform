@@ -7,6 +7,7 @@ require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 const bcrypt = require("bcrypt");
 const { sequelize } = require("../src/config/db");
 require("../src/models/associations");
+const runMigrations = require("../src/utils/runMigrations");
 
 const User = require("../src/models/User");
 const Course = require("../src/models/Course");
@@ -15,6 +16,7 @@ const generateClassCode = require("../src/utils/generateClassCode");
 
 const seed = async () => {
     try {
+        await runMigrations();
         await sequelize.sync();
 
         const [lecturer] = await User.findOrCreate({
@@ -32,15 +34,6 @@ const seed = async () => {
                 fullName: "John Student",
                 password: await bcrypt.hash("student123", 10),
                 role: "student"
-            }
-        });
-
-        const [admin] = await User.findOrCreate({
-            where: { email: "admin@smartcampus.com" },
-            defaults: {
-                fullName: "System Admin",
-                password: await bcrypt.hash("admin123", 10),
-                role: "admin"
             }
         });
 
@@ -68,7 +61,6 @@ const seed = async () => {
         console.log("Seed complete!");
         console.log("Lecturer: lecturer@smartcampus.com / lecturer123");
         console.log("Student:  student@smartcampus.com / student123");
-        console.log("Admin:    admin@smartcampus.com / admin123");
         console.log(`Course:   ${course.title} (id ${course.id})`);
 
         process.exit(0);

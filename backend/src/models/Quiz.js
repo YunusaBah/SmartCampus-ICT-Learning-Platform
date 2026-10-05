@@ -42,6 +42,11 @@ const Quiz = sequelize.define("Quiz", {
     courseId: {
         type: DataTypes.INTEGER,
         allowNull: false
+    },
+
+    assessmentId: {
+        type: DataTypes.INTEGER,
+        allowNull: true
     }
 
 });

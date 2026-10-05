@@ -6,6 +6,7 @@ const Course = sequelize.define("Course", {
     title: { type: DataTypes.STRING, allowNull: false },
     description: { type: DataTypes.TEXT, allowNull: false },
     lecturerId: { type: DataTypes.INTEGER, allowNull: false },
+    departmentId: { type: DataTypes.INTEGER, allowNull: true },
     classCode: { type: DataTypes.STRING(8), unique: true }
 });
 

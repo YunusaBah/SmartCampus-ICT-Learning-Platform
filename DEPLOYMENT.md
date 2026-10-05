@@ -100,7 +100,6 @@ This creates:
 |------|-------|----------|
 | Lecturer | lecturer@smartcampus.com | lecturer123 |
 | Student | student@smartcampus.com | student123 |
-| Admin | admin@smartcampus.com | admin123 |
 
 Remove or change these passwords before a real production launch.
 
@@ -253,7 +252,7 @@ Vite bakes this in at **build time**. After changing it on Netlify, trigger a **
 # backend/.env — local dev or temporary Railway access for seeding
 copy backend\.env.example backend\.env
 
-# frontend/.env.development — already set for localhost
+# frontend/.env.development — defaults to http://localhost:5000
 ```
 
 `.env` files are in `.gitignore`. Never commit secrets.

@@ -13,7 +13,6 @@ export const useAuth = () => {
         user,
         isStudent: user?.role === "student",
         isLecturer: user?.role === "lecturer",
-        isAdmin: user?.role === "admin",
-        isStaff: user?.role === "lecturer" || user?.role === "admin"
+        isStaff: user?.role === "lecturer"
     };
 };

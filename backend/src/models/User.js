@@ -28,8 +28,14 @@ const User = sequelize.define("User", {
     },
 
     role: {
-        type: DataTypes.ENUM("student", "lecturer", "admin"),
+        type: DataTypes.ENUM("student", "lecturer"),
         defaultValue: "student"
+    },
+
+    tokenVersion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
     }
 });
 

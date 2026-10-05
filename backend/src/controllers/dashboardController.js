@@ -8,11 +8,9 @@ const Quiz = require("../models/Quiz");
 
 exports.getStats = async (req, res) => {
     try {
-        if (req.user.role === "lecturer" || req.user.role === "admin") {
+        if (req.user.role === "lecturer") {
             const courses = await Course.findAll({
-                where: req.user.role === "admin"
-                    ? {}
-                    : { lecturerId: req.user.id }
+                where: { lecturerId: req.user.id }
             });
 
             const courseIds = courses.map((c) => c.id);

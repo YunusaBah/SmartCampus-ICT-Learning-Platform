@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { FaArrowRight, FaBookOpen, FaSearch } from "react-icons/fa";
 import API from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 
-const Courses = () => {
+const Courses = ({ catalog = false }) => {
     const { isStaff } = useAuth();
     const [myCourses, setMyCourses] = useState([]);
+    const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
     const [form, setForm] = useState({ title: "", description: "" });
+    const [search, setSearch] = useState("");
+    const [catalogFilter, setCatalogFilter] = useState("all");
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
     const [copied, setCopied] = useState(null);
     const [msg, setMsg] = useState("");
     const [refreshKey, setRefreshKey] = useState(0);
@@ -20,12 +25,22 @@ const Courses = () => {
                 if (isStaff) {
                     const res = await API.get("/courses/my");
                     if (active) setMyCourses(res.data);
+                } else if (catalog) {
+                    const [catalogRes, enrolledRes] = await Promise.all([
+                        API.get("/courses"),
+                        API.get("/enrollments/my-courses")
+                    ]);
+                    const enrolledCourses = enrolledRes.data.map((enrollment) => enrollment.course).filter(Boolean);
+                    if (active) {
+                        setMyCourses(catalogRes.data);
+                        setEnrolledCourseIds(enrolledCourses.map((course) => course.id));
+                    }
                 } else {
                     const res = await API.get("/enrollments/my-courses");
                     if (active) setMyCourses(res.data.map(e => e.course).filter(Boolean));
                 }
             } catch (err) {
-                console.error(err);
+                if (active) setLoadError(err.response?.data?.message || "Unable to load courses.");
             } finally {
                 if (active) setLoading(false);
             }
@@ -33,7 +48,7 @@ const Courses = () => {
 
         loadData();
         return () => { active = false; };
-    }, [isStaff, refreshKey]);
+    }, [catalog, isStaff, refreshKey]);
 
     const handleCreate = async (e) => {
         e.preventDefault();
@@ -54,7 +69,102 @@ const Courses = () => {
         setTimeout(() => setCopied(null), 2000);
     };
 
-    if (loading) return <div className="page-content"><p>Loading...</p></div>;
+    if (loading) return <div className="page-content dashboard-loading" role="status">Loading courses...</div>;
+    if (loadError) return <div className="page-content"><p className="dashboard-alert" role="alert">{loadError}</p></div>;
+
+    if (catalog && !isStaff) {
+        const normalizedSearch = search.trim().toLowerCase();
+        const visibleCourses = myCourses.filter((course) => {
+            const matchesSearch = `${course.title} ${course.description} ${course.lecturer?.fullName || ""}`
+                .toLowerCase()
+                .includes(normalizedSearch);
+            const matchesFilter = catalogFilter === "all" || enrolledCourseIds.includes(course.id);
+            return matchesSearch && matchesFilter;
+        });
+
+        return (
+            <div className="page-content catalog-page">
+                <header className="catalog-header">
+                    <div>
+                        <p className="eyebrow">LEARN SOMETHING NEW</p>
+                        <h1>Course catalog</h1>
+                        <p className="subtitle">Explore courses available on SmartCampus and find your next class.</p>
+                    </div>
+                    <span className="catalog-count">{myCourses.length} {myCourses.length === 1 ? "course" : "courses"}</span>
+                </header>
+
+                <div className="catalog-controls">
+                    <label className="catalog-search">
+                        <FaSearch aria-hidden="true" />
+                        <span className="sr-only">Search courses</span>
+                        <input
+                            type="search"
+                            placeholder="Search course, topic, or lecturer"
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                        />
+                    </label>
+                    <div className="catalog-filters" role="group" aria-label="Filter courses">
+                        <button
+                            type="button"
+                            className={catalogFilter === "all" ? "catalog-filter active" : "catalog-filter"}
+                            aria-pressed={catalogFilter === "all"}
+                            onClick={() => setCatalogFilter("all")}
+                        >
+                            All courses
+                        </button>
+                        <button
+                            type="button"
+                            className={catalogFilter === "enrolled" ? "catalog-filter active" : "catalog-filter"}
+                            aria-pressed={catalogFilter === "enrolled"}
+                            onClick={() => setCatalogFilter("enrolled")}
+                        >
+                            My courses
+                        </button>
+                    </div>
+                </div>
+
+                {visibleCourses.length ? (
+                    <div className="catalog-grid">
+                        {visibleCourses.map((course, index) => {
+                            const isEnrolled = enrolledCourseIds.includes(course.id);
+                            return (
+                                <article className={`catalog-card course-accent-${index % 3}`} key={course.id}>
+                                    <div className="catalog-card-art"><FaBookOpen /></div>
+                                    <div className="catalog-card-content">
+                                        <div className="catalog-card-meta">
+                                            <span>SMARTCAMPUS COURSE</span>
+                                            {isEnrolled && <span className="enrolled-badge">Enrolled</span>}
+                                        </div>
+                                        <h2>{course.title}</h2>
+                                        <p className="catalog-description">{course.description}</p>
+                                        <p className="catalog-lecturer">
+                                            Lecturer <strong>{course.lecturer?.fullName || "SmartCampus faculty"}</strong>
+                                        </p>
+                                        <Link
+                                            to={isEnrolled ? `/courses/${course.id}` : "/join"}
+                                            className="catalog-link"
+                                        >
+                                            {isEnrolled ? "Open classroom" : "Join a class"}
+                                            <FaArrowRight aria-hidden="true" />
+                                        </Link>
+                                    </div>
+                                </article>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div className="catalog-empty">
+                        <FaSearch aria-hidden="true" />
+                        <h2>{myCourses.length ? "No courses match your search" : "No courses are available yet"}</h2>
+                        <p>{myCourses.length
+                            ? "Try another course name, topic, or lecturer."
+                            : "When lecturers publish courses, you can explore them here."}</p>
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     /* ── LECTURER VIEW ── */
     if (isStaff) {

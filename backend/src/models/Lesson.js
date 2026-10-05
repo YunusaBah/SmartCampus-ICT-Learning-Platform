@@ -30,6 +30,17 @@ const Lesson = sequelize.define("Lesson", {
     courseId: {
         type: DataTypes.INTEGER,
         allowNull: false
+    },
+
+    moduleId: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+
+    orderIndex: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
     }
 
 });

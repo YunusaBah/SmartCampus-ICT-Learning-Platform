@@ -9,7 +9,7 @@ const upload = require("../config/multer");
 router.post(
     "/",
     authMiddleware,
-    requireRole("lecturer", "admin"),
+    requireRole("lecturer"),
     assignmentController.createAssignment
 );
 
@@ -21,16 +21,23 @@ router.get(
 );
 
 router.get(
+    "/my/submissions",
+    authMiddleware,
+    requireRole("student"),
+    assignmentController.getMySubmissions
+);
+
+router.get(
     "/course/:courseId/submissions",
     authMiddleware,
-    requireRole("lecturer", "admin"),
+    requireRole("lecturer"),
     assignmentController.getCourseSubmissions
 );
 
 router.patch(
     "/submissions/:id/grade",
     authMiddleware,
-    requireRole("lecturer", "admin"),
+    requireRole("lecturer"),
     assignmentController.gradeSubmission
 );
 
