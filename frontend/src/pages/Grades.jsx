@@ -78,17 +78,27 @@ const Grades = () => {
                     <span className="grades-section-count">{data.quizResults.length}</span>
                 </div>
                 {data.quizResults.length ? (
-                    <div className="grade-results-list">
-                        {data.quizResults.map((result) => (
-                            <article className="grade-result-row" key={result.id}>
-                                <span className="grade-result-icon"><FaClipboardCheck /></span>
-                                <div className="grade-result-copy">
-                                    <strong>{result.quiz?.question || "Quiz question"}</strong>
-                                    <span>Your answer: {result.selectedAnswer}</span>
-                                </div>
-                                <span className="grade-result-score">{result.score === 1 ? "100%" : "0%"}</span>
-                            </article>
-                        ))}
+                    <div className="records-table-scroll">
+                        <table className="records-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">No.</th>
+                                    <th scope="col">Quiz question</th>
+                                    <th scope="col">Your answer</th>
+                                    <th scope="col">Result</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.quizResults.map((result, index) => (
+                                    <tr key={result.id}>
+                                        <td>{index + 1}</td>
+                                        <td>{result.quiz?.question || "Quiz question"}</td>
+                                        <td>{result.selectedAnswer}</td>
+                                        <td>{result.score === 1 ? "Correct" : "Incorrect"} ({result.score === 1 ? "100%" : "0%"})</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 ) : (
                     <div className="grade-empty">
@@ -105,19 +115,31 @@ const Grades = () => {
                     <span className="grades-section-count">{data.submissions.length}</span>
                 </div>
                 {data.submissions.length ? (
-                    <div className="grade-results-list">
-                        {data.submissions.map((submission) => (
-                            <article className="grade-result-row" key={submission.id}>
-                                <span className="grade-result-icon"><FaClipboardCheck /></span>
-                                <div className="grade-result-copy">
-                                    <strong>{submission.assignment?.title || "Assignment"}</strong>
-                                    <span>{submission.assignment?.course?.title || "Course"} · Submitted work</span>
-                                </div>
-                                <span className={submission.grade === "Pending" ? "grade-result-score pending" : "grade-result-score"}>
-                                    {submission.grade}
-                                </span>
-                            </article>
-                        ))}
+                    <div className="records-table-scroll">
+                        <table className="records-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">No.</th>
+                                    <th scope="col">Assignment</th>
+                                    <th scope="col">Course</th>
+                                    <th scope="col">Submitted</th>
+                                    <th scope="col">Grade</th>
+                                    <th scope="col">Feedback</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.submissions.map((submission, index) => (
+                                    <tr key={submission.id}>
+                                        <td>{index + 1}</td>
+                                        <td>{submission.assignment?.title || "Assignment"}</td>
+                                        <td>{submission.assignment?.course?.title || "Course"}</td>
+                                        <td>{new Date(submission.createdAt).toLocaleDateString()}</td>
+                                        <td>{submission.grade}</td>
+                                        <td>{submission.feedback || "—"}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 ) : (
                     <div className="grade-empty">

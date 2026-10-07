@@ -3,28 +3,34 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const sanitizeUser = require("../utils/sanitizeUser");
+const {
+    normalizeEmail,
+    normalizeName,
+    normalizePhone,
+    normalizeStudentId,
+    validatePassword
+} = require("../utils/authValidation");
 
 require("../config/env");
 
 exports.register = async (req, res) => {
     try {
-        const { fullName, email, password, lecturerCode } = req.body;
-
-        if (typeof fullName !== "string" || !fullName.trim() ||
-            typeof email !== "string" || !email.trim() ||
-            typeof password !== "string" || !password) {
-            return res.status(400).json({ message: "All fields are required" });
+        const { fullName, email, password, lecturerCode, matNumber, phone, role: requestedRole } = req.body;
+        const normalizedName = normalizeName(fullName);
+        const normalizedEmail = normalizeEmail(email);
+        if (!normalizedName) {
+            return res.status(400).json({ message: "Enter a name between 2 and 255 characters" });
         }
-
-        const normalizedEmail = email.trim().toLowerCase();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254) {
+        if (!normalizedEmail) {
             return res.status(400).json({ message: "Enter a valid email address" });
         }
-
+        if (typeof password !== "string" || !password) {
+            return res.status(400).json({ message: "All fields are required" });
+        }
         if (password.length < 6) {
             return res.status(400).json({ message: "Password must be at least 6 characters" });
         }
-        if (Buffer.byteLength(password, "utf8") > 72) {
+        if (!validatePassword(password)) {
             return res.status(400).json({ message: "Password must be no more than 72 bytes" });
         }
 
@@ -33,23 +39,34 @@ exports.register = async (req, res) => {
             return res.status(409).json({ message: "An account with this email already exists" });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-
         let role = "student";
 
-        if (
-            lecturerCode &&
-            process.env.LECTURER_CODE &&
-            lecturerCode === process.env.LECTURER_CODE
-        ) {
+        if (requestedRole !== undefined && !["student", "lecturer"].includes(requestedRole)) {
+            return res.status(400).json({ message: "Choose a valid account type" });
+        }
+        if (requestedRole === "lecturer" ||
+            (requestedRole === undefined && lecturerCode !== undefined)) {
+            if (typeof lecturerCode !== "string" || !lecturerCode.trim() ||
+                !process.env.LECTURER_CODE || lecturerCode !== process.env.LECTURER_CODE) {
+                return res.status(400).json({ message: "A valid lecturer code is required" });
+            }
             role = "lecturer";
         }
 
+        const normalizedMatNumber = normalizeStudentId(matNumber);
+        const normalizedPhone = normalizePhone(phone);
+        if (role === "student" && (!normalizedMatNumber || !normalizedPhone)) {
+            return res.status(400).json({ message: "Student ID number and phone number are required" });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
         const user = await User.create({
-            fullName: fullName.trim(),
+            fullName: normalizedName,
             email: normalizedEmail,
             password: hashedPassword,
-            role
+            role,
+            matNumber: role === "student" ? normalizedMatNumber : null,
+            phone: role === "student" ? normalizedPhone : null
         });
 
         res.status(201).json({
@@ -68,16 +85,19 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
     try {
-        const { email, password } = req.body;
-
-        if (typeof email !== "string" || !email.trim() ||
-            typeof password !== "string" || !password) {
-            return res.status(400).json({ message: "Email and password are required" });
+        const { email, password, role } = req.body;
+        const normalizedEmail = normalizeEmail(email);
+        if (!normalizedEmail || typeof password !== "string" || !password ||
+            Buffer.byteLength(password, "utf8") > 72) {
+            return res.status(400).json({ message: "Enter a valid email and password" });
+        }
+        if (role !== undefined && !["student", "lecturer"].includes(role)) {
+            return res.status(400).json({ message: "Choose a valid account type" });
         }
 
-        const user = await User.findOne({ where: { email: email.trim().toLowerCase() } });
+        const user = await User.findOne({ where: { email: normalizedEmail } });
 
-        if (!user) {
+        if (!user || (role && user.role !== role)) {
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
@@ -112,19 +132,11 @@ exports.login = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
     try {
-        const { fullName, email } = req.body;
-
-        if (typeof fullName !== "string" || !fullName.trim() ||
-            typeof email !== "string" || !email.trim()) {
+        const { fullName, email, matNumber, phone } = req.body;
+        const normalizedName = normalizeName(fullName);
+        const normalizedEmail = normalizeEmail(email);
+        if (!normalizedName || !normalizedEmail) {
             return res.status(400).json({ message: "Name and email are required" });
-        }
-
-        const normalizedName = fullName.trim();
-        const normalizedEmail = email.trim().toLowerCase();
-        if (normalizedName.length > 255 ||
-            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
-            normalizedEmail.length > 254) {
-            return res.status(400).json({ message: "Enter a valid name and email address" });
         }
 
         const existingUser = await User.findOne({
@@ -144,6 +156,15 @@ exports.updateProfile = async (req, res) => {
 
         user.fullName = normalizedName;
         user.email = normalizedEmail;
+        if (user.role === "student") {
+            const normalizedMatNumber = normalizeStudentId(matNumber);
+            const normalizedPhone = normalizePhone(phone);
+            if (!normalizedMatNumber || !normalizedPhone) {
+                return res.status(400).json({ message: "Student ID number and phone number are required" });
+            }
+            user.matNumber = normalizedMatNumber;
+            user.phone = normalizedPhone;
+        }
         await user.save();
 
         return res.json({
@@ -167,7 +188,10 @@ exports.updatePassword = async (req, res) => {
             return res.status(400).json({ message: "Current and new passwords are required" });
         }
 
-        if (newPassword.length < 6 || Buffer.byteLength(newPassword, "utf8") > 72) {
+        if (Buffer.byteLength(currentPassword, "utf8") > 72) {
+            return res.status(400).json({ message: "Current password is invalid" });
+        }
+        if (newPassword.length < 6 || !validatePassword(newPassword)) {
             return res.status(400).json({ message: "New password must be 6-72 bytes" });
         }
 

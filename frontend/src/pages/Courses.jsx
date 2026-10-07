@@ -208,7 +208,7 @@ const Courses = ({ catalog = false }) => {
                                 }}>
                                     <div>
                                         <p style={{ color: "var(--theme-muted)", fontSize: "0.75rem", marginBottom: 2 }}>CLASS CODE</p>
-                                        <p style={{ color: "#00d4ff", fontWeight: 700, letterSpacing: "0.25em", fontSize: "1.2rem" }}>
+                                        <p style={{ color: "var(--theme-accent)", fontWeight: 700, letterSpacing: "0.25em", fontSize: "1.2rem" }}>
                                             {course.classCode}
                                         </p>
                                     </div>

@@ -220,29 +220,92 @@ exports.listAnnouncements = async (req, res) => {
     }));
 };
 
+exports.listMyAnnouncements = async (req, res) => {
+    const enrollments = await Enrollment.findAll({
+        where: { studentId: req.user.id },
+        attributes: ["courseId"]
+    });
+    const courseIds = enrollments.map((enrollment) => enrollment.courseId);
+    if (!courseIds.length) return res.json([]);
+    const announcements = await Announcement.findAll({
+        where: { courseId: { [Op.in]: courseIds } },
+        include: [
+            { model: User, as: "author", attributes: ["id", "fullName"] },
+            { model: Course, as: "course", attributes: ["id", "title"] }
+        ],
+        order: [["createdAt", "DESC"]]
+    });
+    res.json(announcements.map((announcement) => ({
+        ...announcement.toJSON(),
+        courseId: announcement.course.id,
+        courseTitle: announcement.course.title
+    })));
+};
+
+const publishAnnouncement = async ({ course, title, body, authorId, transaction }) => {
+    const announcement = await Announcement.create({
+        title: title.trim(),
+        body: body.trim(),
+        courseId: course.id,
+        createdById: authorId
+    }, { transaction });
+    await createNotifications({
+        courseId: course.id,
+        type: "announcement",
+        title: `Announcement: ${announcement.title}`,
+        body: announcement.body.slice(0, 500),
+        resourceType: "announcement",
+        resourceId: announcement.id,
+        transaction
+    });
+    return announcement;
+};
+
 exports.createAnnouncement = async (req, res) => {
-    const access = await managerAccess(req.params.courseId, req.user, res);
-    if (!access) return;
+    const access = await courseParticipant(req.params.courseId, req.user);
+    if (access.status) return res.status(access.status).json({ message: access.message });
     const { title, body } = req.body;
     if (!nonEmpty(title) || !nonEmpty(body, 20000)) {
         return res.status(400).json({ message: "Announcement title and body are required" });
     }
-    const announcement = await sequelize.transaction(async (transaction) => {
-        const created = await Announcement.create({
-            title: title.trim(), body: body.trim(), courseId: access.course.id, createdById: req.user.id
-        }, { transaction });
-        await createNotifications({
-            courseId: access.course.id,
-            type: "announcement",
-            title: `Announcement: ${created.title}`,
-            body: created.body.slice(0, 500),
-            resourceType: "announcement",
-            resourceId: created.id,
+    const announcement = await sequelize.transaction((transaction) =>
+        publishAnnouncement({
+            course: access.course,
+            title,
+            body,
+            authorId: req.user.id,
             transaction
-        });
-        return created;
-    });
+        })
+    );
     res.status(201).json(announcement);
+};
+
+exports.broadcastAnnouncement = async (req, res) => {
+    const { title, body } = req.body;
+    if (!nonEmpty(title) || !nonEmpty(body, 20000)) {
+        return res.status(400).json({ message: "Announcement title and body are required" });
+    }
+    const courses = await Course.findAll({
+        where: { lecturerId: req.user.id },
+        order: [["id", "ASC"]]
+    });
+    if (!courses.length) {
+        return res.status(400).json({ message: "Create a course before broadcasting an announcement" });
+    }
+    const announcements = await sequelize.transaction(async (transaction) => {
+        const published = [];
+        for (const course of courses) {
+            published.push(await publishAnnouncement({
+                course,
+                title,
+                body,
+                authorId: req.user.id,
+                transaction
+            }));
+        }
+        return published;
+    });
+    res.status(201).json({ message: "Announcement sent to all your courses", announcements });
 };
 
 exports.updateAnnouncement = async (req, res) => {
@@ -269,46 +332,63 @@ exports.deleteAnnouncement = async (req, res) => {
     res.json({ message: "Announcement deleted" });
 };
 
-const messageParticipant = async (courseId, user, otherId) => {
-    const access = await getCourseAccess(courseId, user);
-    if (access.status) return { error: access };
-    if (user.role === "lecturer") {
-        if (otherId == null) return { access, oversight: false };
-        const enrollment = await Enrollment.findOne({
-            where: { courseId: access.course.id, studentId: otherId }
-        });
-        return enrollment ? { access, oversight: false } : { error: { status: 403, message: "Recipient is not enrolled in this course" } };
+const getStudentMessageRoom = async (courseId, user, otherId = null) => {
+    if (user.role !== "student") {
+        return { error: { status: 403, message: "Student messaging is only available to students" } };
     }
-    if (otherId != null && Number(otherId) !== access.course.lecturerId) {
-        return { error: { status: 403, message: "Students may only message the course lecturer" } };
+    const enrollment = await Enrollment.findOne({
+        where: { courseId, studentId: user.id }
+    });
+    if (!enrollment) {
+        return { error: { status: 403, message: "Join this class before messaging classmates" } };
     }
-    return { access, oversight: false, lecturerId: access.course.lecturerId };
+    const classEnrollments = await Enrollment.findAll({
+        where: { courseId },
+        attributes: ["studentId"]
+    });
+    const classmateIds = classEnrollments
+        .map((item) => item.studentId)
+        .filter((studentId) => studentId !== user.id);
+    if (otherId != null && !classmateIds.includes(otherId)) {
+        return { error: { status: 403, message: "You can only message students in this class" } };
+    }
+    return { classmateIds };
 };
 
 exports.listConversations = async (req, res) => {
     const courseId = idValue(req.params.courseId);
     if (!courseId) return res.status(400).json({ message: "Invalid course ID" });
-    const participant = await messageParticipant(courseId, req.user, null);
-    if (participant.error) return accessResponse(res, participant.error);
+    const room = await getStudentMessageRoom(courseId, req.user);
+    if (room.error) return accessResponse(res, room.error);
+    if (!room.classmateIds.length) return res.json([]);
     const messages = await Message.findAll({
-        where: { courseId },
+        where: {
+            courseId,
+            [Op.or]: [
+                { senderId: req.user.id, recipientId: { [Op.in]: room.classmateIds } },
+                { recipientId: req.user.id, senderId: { [Op.in]: room.classmateIds } }
+            ]
+        },
         include: [
             { model: User, as: "sender", attributes: ["id", "fullName", "role"] },
             { model: User, as: "recipient", attributes: ["id", "fullName", "role"] }
         ],
         order: [["createdAt", "DESC"]]
     });
-    const visible = req.user.role === "lecturer"
-        ? messages
-        : messages.filter((message) =>
-            (message.senderId === req.user.id && message.recipientId === participant.lecturerId) ||
-            (message.recipientId === req.user.id && message.senderId === participant.lecturerId));
     const grouped = new Map();
-    for (const message of visible) {
+    const classmates = await User.findAll({
+        where: { id: { [Op.in]: room.classmateIds } },
+        attributes: ["id", "fullName", "role"],
+        order: [["fullName", "ASC"]]
+    });
+    for (const classmate of classmates) {
+        grouped.set(classmate.id, { participant: classmate, latestMessage: null });
+    }
+    for (const message of messages) {
         const otherId = message.senderId === req.user.id ? message.recipientId : message.senderId;
-        if (!grouped.has(otherId)) {
-            const other = message.senderId === otherId ? message.sender : message.recipient;
-            grouped.set(otherId, { participant: other, latestMessage: message });
+        const conversation = grouped.get(otherId);
+        if (conversation && !conversation.latestMessage) {
+            conversation.latestMessage = message;
         }
     }
     res.json([...grouped.values()]);
@@ -318,8 +398,8 @@ exports.listMessages = async (req, res) => {
     const courseId = idValue(req.params.courseId);
     const otherId = idValue(req.params.userId);
     if (!courseId || !otherId) return res.status(400).json({ message: "Invalid conversation" });
-    const participant = await messageParticipant(courseId, req.user, otherId);
-    if (participant.error) return accessResponse(res, participant.error);
+    const room = await getStudentMessageRoom(courseId, req.user, otherId);
+    if (room.error) return accessResponse(res, room.error);
     const messages = await Message.findAll({
         where: { courseId, [Op.or]: [
             { senderId: req.user.id, recipientId: otherId },
@@ -343,18 +423,17 @@ exports.sendMessage = async (req, res) => {
     if (!courseId || !recipientId || !nonEmpty(req.body.body, 20000)) {
         return res.status(400).json({ message: "Recipient and message body are required" });
     }
-    const participant = await messageParticipant(courseId, req.user, recipientId);
-    if (participant.error) return accessResponse(res, participant.error);
-    const receiver = req.user.role === "student" ? participant.lecturerId : recipientId;
+    const room = await getStudentMessageRoom(courseId, req.user, recipientId);
+    if (room.error) return accessResponse(res, room.error);
     const message = await sequelize.transaction(async (transaction) => {
         const created = await Message.create({
             courseId,
             senderId: req.user.id,
-            recipientId: receiver,
+            recipientId,
             body: req.body.body.trim()
         }, { transaction });
         await createNotifications({
-            userIds: [receiver],
+            userIds: [recipientId],
             type: "message",
             title: "New course message",
             body: req.body.body.trim().slice(0, 500),

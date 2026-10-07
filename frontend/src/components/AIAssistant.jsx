@@ -52,9 +52,9 @@ const AIAssistant = ({ courseName = "", lessonContent = "" }) => {
                     position: "fixed", bottom: 24, right: 24, zIndex: 1000,
                     width: 58, height: 58, borderRadius: "50%",
                     background: open ? "var(--theme-bg)" : "var(--theme-accent)",
-                    border: "2px solid #00d4ff",
+                    border: "2px solid var(--theme-accent)",
                     fontSize: "1.5rem", cursor: "pointer",
-                    boxShadow: "0 4px 24px rgba(0,212,255,0.4)",
+                    boxShadow: "0 4px 24px rgba(var(--theme-accent-rgb),0.4)",
                     color: open ? "var(--theme-accent)" : "var(--theme-active-text)",
                     transition: "all 0.2s", display: "flex",
                     alignItems: "center", justifyContent: "center"
@@ -79,7 +79,7 @@ const AIAssistant = ({ courseName = "", lessonContent = "" }) => {
                         borderBottom: "1px solid var(--theme-border)",
                         borderRadius: "16px 16px 0 0"
                     }}>
-                        <p style={{ color: "#00d4ff", fontWeight: 700, fontSize: "0.95rem" }}>
+                        <p style={{ color: "var(--theme-accent)", fontWeight: 700, fontSize: "0.95rem" }}>
                             🤖 AI {isStaff ? "Quiz Generator" : "Learning Assistant"}
                         </p>
                         <p style={{ color: "var(--theme-muted)", fontSize: "0.75rem", marginTop: 2 }}>

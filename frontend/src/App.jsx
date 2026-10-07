@@ -21,22 +21,52 @@ import Calendar from "./pages/Calendar";
 import Announcements from "./pages/Announcements";
 import Messages from "./pages/Messages";
 import Certificates from "./pages/Certificates";
+import Todos from "./pages/Todos";
 
 import "./styles/global.css";
 
+const readAccountId = () => {
+    try {
+        const user = JSON.parse(localStorage.getItem("user") || "null");
+        return user?.id == null ? "guest" : String(user.id);
+    } catch {
+        return "guest";
+    }
+};
+
+const themeKey = (accountId) => `smartcampus:theme:${accountId}`;
+
+const readTheme = (accountId) => localStorage.getItem(themeKey(accountId)) === "dark" ? "dark" : "light";
+
 function App() {
     const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 768);
-    const [theme, setTheme] = useState(() => {
-        const savedTheme = localStorage.getItem("theme");
-        return savedTheme === "dark" ? "dark" : "light";
-    });
+    const [accountId, setAccountId] = useState(readAccountId);
+    const [theme, setTheme] = useState(() => readTheme(readAccountId()));
     const closeSidebar = () => setSidebarOpen(false);
     const toggleSidebar = () => setSidebarOpen(prev => !prev);
 
     useEffect(() => {
         document.documentElement.dataset.theme = theme;
-        localStorage.setItem("theme", theme);
-    }, [theme]);
+        localStorage.setItem(themeKey(accountId), theme);
+    }, [accountId, theme]);
+
+    useEffect(() => {
+        const syncAccountTheme = () => {
+            const nextAccountId = readAccountId();
+            setAccountId(nextAccountId);
+            setTheme(readTheme(nextAccountId));
+        };
+        const syncOtherTab = (event) => {
+            if (event.key === "user" || event.key === "token") syncAccountTheme();
+        };
+
+        window.addEventListener("smartcampus:account-changed", syncAccountTheme);
+        window.addEventListener("storage", syncOtherTab);
+        return () => {
+            window.removeEventListener("smartcampus:account-changed", syncAccountTheme);
+            window.removeEventListener("storage", syncOtherTab);
+        };
+    }, []);
 
     useEffect(() => {
         document.documentElement.dataset.reducedMotion =
@@ -96,7 +126,21 @@ function App() {
                         } />
                         <Route path="calendar" element={<Calendar />} />
                         <Route path="announcements" element={<Announcements />} />
-                        <Route path="messages" element={<Messages />} />
+                        <Route path="messages" element={
+                            <RoleRoute roles={["student"]}>
+                                <Messages />
+                            </RoleRoute>
+                        } />
+                        <Route path="todo" element={
+                            <RoleRoute roles={["student"]}>
+                                <Todos />
+                            </RoleRoute>
+                        } />
+                        <Route path="todo/:status" element={
+                            <RoleRoute roles={["student"]}>
+                                <Todos />
+                            </RoleRoute>
+                        } />
                         <Route path="certificates" element={
                             <RoleRoute roles={["student"]}>
                                 <Certificates />

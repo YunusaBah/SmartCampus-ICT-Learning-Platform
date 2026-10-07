@@ -397,7 +397,7 @@ const CourseDetail = () => {
 
     return (
         <div className="page-content">
-            <Link to="/courses" style={{ color: "#00d4ff", display: "inline-block", marginBottom: 12 }}>
+            <Link to="/courses" style={{ color: "var(--theme-accent)", display: "inline-block", marginBottom: 12 }}>
                 ← Back to courses
             </Link>
             <h1>{course.title}</h1>
@@ -648,7 +648,7 @@ const CourseDetail = () => {
                                             <label key={opt} style={{
                                                 display: "flex", alignItems: "center", gap: 10,
                                                 padding: "10px 12px", margin: "6px 0",
-                                                background: quizAnswers[quiz.id] === opt ? "rgba(0,212,255,0.1)" : "var(--theme-panel-raised)",
+                                                background: quizAnswers[quiz.id] === opt ? "rgba(var(--theme-accent-rgb),0.1)" : "var(--theme-panel-raised)",
                                                 borderRadius: 8, cursor: "pointer",
                                                 border: quizAnswers[quiz.id] === opt ? "1px solid var(--theme-accent)" : "1px solid transparent"
                                             }}>
@@ -745,7 +745,7 @@ const CourseDetail = () => {
             {/* STUDENTS */}
             {tab === "students" && showLecturer && (
                 <section>
-                    <h2 style={{ marginBottom: 16, color: "#00d4ff" }}>
+                    <h2 style={{ marginBottom: 16, color: "var(--theme-accent)" }}>
                         Enrolled Students ({students?.length || 0})
                     </h2>
                     {(!students || students.length === 0) ? (
@@ -771,7 +771,7 @@ const CourseDetail = () => {
             {/* GRADING */}
             {tab === "grading" && showLecturer && (
                 <section>
-                    <h2 style={{ marginBottom: 16, color: "#00d4ff" }}>Grade Submissions</h2>
+                    <h2 style={{ marginBottom: 16, color: "var(--theme-accent)" }}>Grade Submissions</h2>
                     {submissions.length === 0 && (
                         <p style={{ color: "var(--theme-muted)" }}>No submissions yet.</p>
                     )}
@@ -782,7 +782,7 @@ const CourseDetail = () => {
                                 Due: {new Date(assignment.dueDate).toLocaleDateString()}
                             </p>
                             {(!assignment.submissions || assignment.submissions.length === 0) && (
-                                <p style={{ color: "#4a6a8a", marginTop: 8 }}>No submissions yet.</p>
+                                <p style={{ color: "var(--theme-muted)", marginTop: 8 }}>No submissions yet.</p>
                             )}
                             {assignment.submissions?.map(sub => (
                                 <div key={sub.id} style={{
@@ -798,9 +798,9 @@ const CourseDetail = () => {
                                             display: "inline-block", marginTop: 4,
                                             padding: "2px 10px", borderRadius: 20, fontSize: "0.8rem",
                                             background: sub.grade === "Pending"
-                                                ? "rgba(240,165,0,0.15)"
-                                                : "rgba(0,212,255,0.12)",
-                                            color: sub.grade === "Pending" ? "#f0a500" : "#00d4ff"
+                                                ? "rgba(var(--theme-warm-rgb),0.15)"
+                                                : "rgba(var(--theme-accent-rgb),0.12)",
+                                            color: sub.grade === "Pending" ? "var(--theme-warm)" : "var(--theme-accent)"
                                         }}>
                                             {sub.grade}
                                         </span>
@@ -835,7 +835,7 @@ const CourseDetail = () => {
                                         />
                                         <button onClick={() => handleGrade(sub.id)}
                                                 style={{
-                                                    padding: "8px 14px", background: "#f0a500",
+                                                    padding: "8px 14px", background: "var(--theme-warm)",
                                                     border: "none", borderRadius: 8,
                                                     color: "var(--theme-active-text)", fontWeight: 700, cursor: "pointer"
                                                 }}>

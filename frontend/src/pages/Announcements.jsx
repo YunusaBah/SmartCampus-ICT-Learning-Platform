@@ -50,19 +50,23 @@ const Announcements = () => {
         event.preventDefault();
         setStatus("");
         try {
-            const response = await API.post(`/courses/${form.courseId}/announcements`, {
+            const payload = {
                 title: form.title,
                 body: form.body
-            });
-            const course = courses.find((item) => String(item.id) === String(form.courseId));
-            setAnnouncements((current) => [{
-                ...response.data,
+            };
+            const broadcast = form.courseId === "all";
+            const response = broadcast
+                ? await API.post("/announcements/broadcast", payload)
+                : await API.post(`/courses/${form.courseId}/announcements`, payload);
+            const published = broadcast ? response.data.announcements : [response.data];
+            const created = published.map((announcement) => ({
+                ...announcement,
                 author: { fullName: "You" },
-                courseTitle: course?.title || "Course",
-                courseId: course?.id
-            }, ...current]);
+                courseTitle: courses.find((course) => course.id === announcement.courseId)?.title || "Course"
+            }));
+            setAnnouncements((current) => [...created, ...current]);
             setForm((current) => ({ ...current, title: "", body: "" }));
-            setStatus("Announcement published.");
+            setStatus(broadcast ? "Announcement published to all your courses." : "Announcement published.");
         } catch (requestError) {
             setStatus(requestError.response?.data?.message || "Unable to publish announcement.");
         }
@@ -79,13 +83,13 @@ const Announcements = () => {
                 <span className="grades-header-icon"><FaBullhorn /></span>
             </header>
 
-            {isStaff && (
-                <details className="feature-create-panel">
-                    <summary>Post an announcement</summary>
-                    <form className="feature-form-grid" onSubmit={createAnnouncement}>
+            <details className="feature-create-panel">
+                <summary>Post an announcement</summary>
+                <form className="feature-form-grid" onSubmit={createAnnouncement}>
                         <label>Course
                             <select required value={form.courseId} onChange={(event) => setForm({ ...form, courseId: event.target.value })}>
                                 <option value="">Choose a course</option>
+                                {isStaff && <option value="all">All my courses</option>}
                                 {courses.map((course) => <option value={course.id} key={course.id}>{course.title}</option>)}
                             </select>
                         </label>
@@ -93,9 +97,8 @@ const Announcements = () => {
                         <label className="feature-form-wide">Message<textarea required maxLength={20000} rows={4} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} /></label>
                         <button type="submit" className="btn btn-inline">Publish announcement</button>
                         {status && <p className="feature-status" role="status">{status}</p>}
-                    </form>
-                </details>
-            )}
+                </form>
+            </details>
 
             {loading ? <p className="dashboard-loading" role="status">Loading announcements...</p> : error ? (
                 <div className="dashboard-alert" role="alert">{error}</div>

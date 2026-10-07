@@ -28,6 +28,7 @@ API.interceptors.response.use(
         if (error.response?.status === 401) {
             localStorage.removeItem("token");
             localStorage.removeItem("user");
+            window.dispatchEvent(new Event("smartcampus:account-changed"));
 
             if (window.location.pathname !== "/login") {
                 window.location.href = "/login";

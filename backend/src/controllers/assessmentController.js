@@ -148,16 +148,15 @@ exports.startAttempt = async (req, res) => {
     if (!validId(assessmentId)) return res.status(400).json({ message: "Invalid assessment ID" });
     const assessment = await QuizAssessment.findByPk(assessmentId);
     if (!assessment) return res.status(404).json({ message: "Assessment not found" });
-    const enrolled = await Enrollment.findOne({
-        where: { studentId: req.user.id, courseId: assessment.courseId }
-    });
-    if (!enrolled) return res.status(403).json({ message: "Enroll in the course first" });
 
     const outcome = await sequelize.transaction(async (transaction) => {
-        await QuizAssessment.findByPk(assessment.id, {
+        const enrolled = await Enrollment.findOne({
+            where: { studentId: req.user.id, courseId: assessment.courseId },
             transaction,
             lock: transaction.LOCK.UPDATE
         });
+        if (!enrolled) return { status: 403, message: "Enroll in the course first" };
+
         let active = await QuizAttempt.findOne({
             where: { studentId: req.user.id, assessmentId: assessment.id, submittedAt: null },
             order: [["startedAt", "DESC"]],

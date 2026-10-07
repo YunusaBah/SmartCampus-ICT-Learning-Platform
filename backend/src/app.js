@@ -30,7 +30,11 @@ const allowedOrigins = [
 
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100
+    limit: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => ["GET", "HEAD", "OPTIONS"].includes(req.method),
+    message: { message: "Too many write requests. Please wait before trying again." }
 });
 
 app.use(helmet());

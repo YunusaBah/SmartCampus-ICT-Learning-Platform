@@ -9,7 +9,9 @@ const Settings = ({ theme, setTheme }) => {
     const { user } = useAuth();
     const [profile, setProfile] = useState({
         fullName: user?.fullName || "",
-        email: user?.email || ""
+        email: user?.email || "",
+        matNumber: user?.matNumber || "",
+        phone: user?.phone || ""
     });
     const [password, setPassword] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
     const [reducedMotion, setReducedMotion] = useState(readMotionPreference);
@@ -29,7 +31,9 @@ const Settings = ({ theme, setTheme }) => {
             window.dispatchEvent(new Event("smartcampus:user-updated"));
             setProfile({
                 fullName: response.data.user.fullName,
-                email: response.data.user.email
+                email: response.data.user.email,
+                matNumber: response.data.user.matNumber || "",
+                phone: response.data.user.phone || ""
             });
             setProfileStatus({ type: "success", text: response.data.message });
         } catch (error) {
@@ -120,6 +124,30 @@ const Settings = ({ theme, setTheme }) => {
                             onChange={(event) => setProfile({ ...profile, email: event.target.value })}
                         />
                     </label>
+                    {user?.role === "student" && (
+                        <>
+                            <label>
+                                Student ID / Matriculation number
+                                <input
+                                    maxLength={50}
+                                    required
+                                    value={profile.matNumber}
+                                    onChange={(event) => setProfile({ ...profile, matNumber: event.target.value })}
+                                />
+                            </label>
+                            <label>
+                                Phone number
+                                <input
+                                    autoComplete="tel"
+                                    type="tel"
+                                    maxLength={30}
+                                    required
+                                    value={profile.phone}
+                                    onChange={(event) => setProfile({ ...profile, phone: event.target.value })}
+                                />
+                            </label>
+                        </>
+                    )}
                     <div className="settings-form-footer">
                         {profileStatus && (
                             <p className={`settings-status ${profileStatus.type}`} role="status">{profileStatus.text}</p>
@@ -190,7 +218,7 @@ const Settings = ({ theme, setTheme }) => {
                     <span className="settings-section-icon">{theme === "dark" ? <FaMoon /> : <FaSun />}</span>
                     <div>
                         <h2>Appearance & accessibility</h2>
-                        <p>These preferences are saved in this browser and apply throughout SmartCampus.</p>
+                        <p>Your appearance preference is saved separately for your account on this browser.</p>
                     </div>
                 </div>
                 <div className="settings-preference-row">

@@ -89,7 +89,7 @@ exports.getMyStudents = async (req, res) => {
                 include: [{
                     model: User,
                     as: "student",
-                    attributes: ["id", "fullName", "email"]
+                    attributes: ["id", "fullName", "email", "matNumber", "phone"]
                 }]
             }],
             order: [["title", "ASC"], [{ model: Enrollment, as: "enrollments" }, "createdAt", "ASC"]]
@@ -100,8 +100,8 @@ exports.getMyStudents = async (req, res) => {
                 .filter((enrollment) => enrollment.student)
                 .map((enrollment) => ({
                     ...enrollment.student.toJSON(),
-                    courseId: course.id,
                     courseTitle: course.title,
+                    courseId: course.id,
                     enrolledAt: enrollment.createdAt
                 }))
         );
@@ -141,7 +141,7 @@ exports.getCourseDetail = async (req, res) => {
                 where: { courseId: course.id },
                 include: [{
                     model: User, as: "student",
-                    attributes: ["id", "fullName", "email", "role"]
+                    attributes: ["id", "fullName", "email", "matNumber", "phone", "role"]
                 }]
             });
             students = enrollments.map(e => e.student);

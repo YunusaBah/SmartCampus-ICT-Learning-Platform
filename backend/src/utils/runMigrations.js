@@ -7,9 +7,14 @@ const lecturerStudentRolesMigrationName = "20261004_03_lecturer_student_roles";
 const roleEnumCleanupMigrationName = "20261004_04_remove_admin_role_value";
 const enforceTwoRoleEnumMigrationName = "20261004_05_enforce_two_role_enum";
 const reconcileLmsSchemaMigrationName = "20261004_06_reconcile_lms_columns";
+const userTokenVersionMigrationName = "20261007_02_ensure_user_token_version";
+const reconcileSchemaMigrationName = "20261007_03_reconcile_existing_tables";
+const reconcileCalendarAndAssessmentMigrationName = "20261007_04_reconcile_calendar_assessments";
 const additions = {
     Users: {
-        tokenVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }
+        tokenVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+        matNumber: { type: DataTypes.STRING(50), allowNull: true },
+        phone: { type: DataTypes.STRING(30), allowNull: true }
     },
     Courses: {
         departmentId: { type: DataTypes.INTEGER, allowNull: true }
@@ -23,18 +28,28 @@ const additions = {
     },
     Submissions: {
         feedback: { type: DataTypes.TEXT, allowNull: true }
+    },
+    CalendarEvents: {
+        eventType: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "event" }
+    },
+    QuizAssessments: {
+        maxAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 }
     }
 };
 
 const getTables = async (queryInterface) => {
     const tables = await queryInterface.showAllTables();
-    return new Set(tables.map((table) => (typeof table === "string" ? table : table.tableName)));
+    return new Set(tables.map((table) => (
+        (typeof table === "string" ? table : table.tableName).toLowerCase()
+    )));
 };
+
+const hasTable = (tables, tableName) => tables.has(tableName.toLowerCase());
 
 module.exports = async () => {
     const queryInterface = sequelize.getQueryInterface();
     let tables = await getTables(queryInterface);
-    if (!tables.has("SchemaMigrations")) {
+    if (!hasTable(tables, "SchemaMigrations")) {
         await queryInterface.createTable("SchemaMigrations", {
             name: { type: DataTypes.STRING(100), primaryKey: true, allowNull: false },
             appliedAt: { type: DataTypes.DATE, allowNull: false }
@@ -48,7 +63,7 @@ module.exports = async () => {
     if (!applied.length) {
         for (const [tableName, columns] of Object.entries(additions)) {
             tables = await getTables(queryInterface);
-            if (!tables.has(tableName)) continue;
+            if (!hasTable(tables, tableName)) continue;
             const existing = await queryInterface.describeTable(tableName);
             for (const [columnName, definition] of Object.entries(columns)) {
                 if (!Object.prototype.hasOwnProperty.call(existing, columnName)) {
@@ -58,7 +73,7 @@ module.exports = async () => {
         }
 
         tables = await getTables(queryInterface);
-        if (tables.has("Quizzes")) {
+        if (hasTable(tables, "Quizzes")) {
             const quizColumns = await queryInterface.describeTable("Quizzes");
             if (Object.prototype.hasOwnProperty.call(quizColumns, "question")) {
                 await queryInterface.changeColumn("Quizzes", "question", {
@@ -88,7 +103,7 @@ module.exports = async () => {
             }
         })) {
             tables = await getTables(queryInterface);
-            if (!tables.has(tableName)) continue;
+            if (!hasTable(tables, tableName)) continue;
             const existing = await queryInterface.describeTable(tableName);
             for (const [columnName, definition] of Object.entries(columns)) {
                 if (!Object.prototype.hasOwnProperty.call(existing, columnName)) {
@@ -108,7 +123,7 @@ module.exports = async () => {
     });
     if (!rolesApplied.length) {
         tables = await getTables(queryInterface);
-        if (tables.has("Users")) {
+        if (hasTable(tables, "Users")) {
             const userColumns = await queryInterface.describeTable("Users");
             if (Object.prototype.hasOwnProperty.call(userColumns, "role")) {
                 const tokenVersionUpdate = Object.prototype.hasOwnProperty.call(userColumns, "tokenVersion")
@@ -131,7 +146,7 @@ module.exports = async () => {
     });
     if (!roleEnumCleanupApplied.length) {
         tables = await getTables(queryInterface);
-        if (tables.has("Users")) {
+        if (hasTable(tables, "Users")) {
             const userColumns = await queryInterface.describeTable("Users");
             if (Object.prototype.hasOwnProperty.call(userColumns, "role")) {
                 if (Object.prototype.hasOwnProperty.call(userColumns, "tokenVersion")) {
@@ -164,7 +179,7 @@ module.exports = async () => {
     });
     if (!enforceTwoRoleEnumApplied.length) {
         tables = await getTables(queryInterface);
-        if (tables.has("Users")) {
+        if (hasTable(tables, "Users")) {
             const userColumns = await queryInterface.describeTable("Users");
             if (Object.prototype.hasOwnProperty.call(userColumns, "role")) {
                 await queryInterface.sequelize.query(
@@ -193,7 +208,7 @@ module.exports = async () => {
                     maxAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 }
                 }
             })) {
-                if (!tables.has(tableName)) continue;
+                if (!hasTable(tables, tableName)) continue;
                 const existing = await queryInterface.describeTable(tableName);
                 for (const [columnName, definition] of Object.entries(columns)) {
                     if (!Object.prototype.hasOwnProperty.call(existing, columnName)) {
@@ -215,4 +230,64 @@ module.exports = async () => {
             }]);
         }
     };
+
+    const userTokenVersionMigrationApplied = await queryInterface.select(null, "SchemaMigrations", {
+        where: { name: userTokenVersionMigrationName },
+        limit: 1
+    });
+    if (!userTokenVersionMigrationApplied.length) {
+        tables = await getTables(queryInterface);
+        if (hasTable(tables, "Users")) {
+            const userColumns = await queryInterface.describeTable("Users");
+            if (!Object.prototype.hasOwnProperty.call(userColumns, "tokenVersion")) {
+                await queryInterface.addColumn("Users", "tokenVersion", additions.Users.tokenVersion);
+            }
+        }
+        await queryInterface.bulkInsert("SchemaMigrations", [{
+            name: userTokenVersionMigrationName,
+            appliedAt: new Date()
+        }]);
+    }
+
+    const reconcileSchemaApplied = await queryInterface.select(null, "SchemaMigrations", {
+        where: { name: reconcileSchemaMigrationName },
+        limit: 1
+    });
+    if (!reconcileSchemaApplied.length) {
+        for (const [tableName, columns] of Object.entries(additions)) {
+            tables = await getTables(queryInterface);
+            if (!hasTable(tables, tableName)) continue;
+            const existing = await queryInterface.describeTable(tableName);
+            for (const [columnName, definition] of Object.entries(columns)) {
+                if (!Object.prototype.hasOwnProperty.call(existing, columnName)) {
+                    await queryInterface.addColumn(tableName, columnName, definition);
+                }
+            }
+        }
+        await queryInterface.bulkInsert("SchemaMigrations", [{
+            name: reconcileSchemaMigrationName,
+            appliedAt: new Date()
+        }]);
+    }
+
+    const calendarAndAssessmentApplied = await queryInterface.select(null, "SchemaMigrations", {
+        where: { name: reconcileCalendarAndAssessmentMigrationName },
+        limit: 1
+    });
+    if (!calendarAndAssessmentApplied.length) {
+        for (const tableName of ["CalendarEvents", "QuizAssessments"]) {
+            tables = await getTables(queryInterface);
+            if (!hasTable(tables, tableName)) continue;
+            const existing = await queryInterface.describeTable(tableName);
+            for (const [columnName, definition] of Object.entries(additions[tableName])) {
+                if (!Object.prototype.hasOwnProperty.call(existing, columnName)) {
+                    await queryInterface.addColumn(tableName, columnName, definition);
+                }
+            }
+        }
+        await queryInterface.bulkInsert("SchemaMigrations", [{
+            name: reconcileCalendarAndAssessmentMigrationName,
+            appliedAt: new Date()
+        }]);
+    }
 };

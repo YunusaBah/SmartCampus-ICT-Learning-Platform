@@ -6,6 +6,15 @@ The server runs additive, idempotent schema migrations before create-only
 and records the applied migration in `SchemaMigrations`; it does not drop or
 alter existing data. Do not use `sync({ alter: true })`.
 
+Database connections use a configurable per-process pool (`DB_POOL_MAX`,
+`DB_POOL_MIN`, `DB_POOL_ACQUIRE`, and `DB_POOL_IDLE`). Set `DB_POOL_MAX` based
+on the database's available connection limit and the number of backend
+instances; the total possible connections are approximately the pool maximum
+multiplied by the number of instances. Assessment starts lock the enrolling
+student's course enrollment while checking and creating attempts, preventing
+simultaneous starts from exceeding the configured attempt limit without
+serializing starts by every other student.
+
 All routes below require a bearer token unless otherwise stated. The platform
 has two roles: `student` and `lecturer`. Lecturers manage only courses they
 own; students must be enrolled to read or submit course work. The

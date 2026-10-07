@@ -41,6 +41,7 @@ const Sidebar = ({ open, onClose }) => {
     const handleLogout = () => {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
+        window.dispatchEvent(new Event("smartcampus:account-changed"));
         navigate("/login");
     };
 
@@ -61,66 +62,48 @@ const Sidebar = ({ open, onClose }) => {
         <aside className={open ? "sidebar" : "sidebar closed"}>
             <div className="sidebar-brand">
                 <span className="brand-mark"><FaGraduationCap /></span>
-                <div><strong>SmartCampus</strong><span>LEARNING PLATFORM</span></div>
+                <div className="sidebar-brand-copy">
+                    <strong>SmartCampus</strong>
+                    <span>LEARNING PLATFORM</span>
+                    <b>{profileUser?.fullName || "SmartCampus user"}</b>
+                </div>
             </div>
 
             <nav>
-                <div className="sidebar-group">
-                    <h4 className="sidebar-group-title">Workspace</h4>
-                    <ul>{link("/dashboard", "Dashboard", <FaHome />)}</ul>
-                </div>
-
-                {isStudent && (
-                    <div className="sidebar-group">
-                        <h4 className="sidebar-group-title">Learning</h4>
-                        <ul>
+                <ul>
+                    {link("/dashboard", "Dashboard", <FaHome />)}
+                    {isStudent && (
+                        <>
                             {link("/courses", "My courses", <FaBookOpen />)}
                             {link("/catalog", "Course catalog", <FaCompass />)}
                             {link("/join", "Join a class", <FaDoorOpen />)}
                             {link("/assignments", "Assignments", <FaClipboardList />)}
+                            {link("/todo", "To-do list", <FaClipboardList />)}
                             {link("/grades", "Grades", <FaChartBar />)}
                             {link("/calendar", "Calendar", <FaCalendarAlt />)}
                             {link("/messages", "Messages", <FaCommentDots />)}
                             {link("/announcements", "Announcements", <FaBell />)}
                             {link("/certificates", "Certificates", <FaAward />)}
-                        </ul>
-                    </div>
-                )}
-
-                {isStaff && (
-                    <div className="sidebar-group">
-                        <h4 className="sidebar-group-title">Teaching</h4>
-                        <ul>
+                        </>
+                    )}
+                    {isStaff && (
+                        <>
                             {link("/courses", "My courses", <FaBookOpen />)}
                             {link("/students", "My students", <FaUsers />)}
                             {link("/assignments", "Assignments & grading", <FaClipboardList />)}
                             {link("/calendar", "Calendar", <FaCalendarAlt />)}
-                            {link("/messages", "Messages", <FaCommentDots />)}
                             {link("/announcements", "Announcements", <FaBell />)}
-                        </ul>
-                    </div>
-                )}
-
-            </nav>
-            <div className="sidebar-account">
-                <div className="sidebar-group-title">Account</div>
-                <ul>
+                        </>
+                    )}
                     {link("/settings", "Settings", <FaCog />)}
+                    <li>
+                        <button type="button" className="nav-link link-btn" onClick={handleLogout}>
+                            <span className="nav-link-icon"><FaDoorOpen /></span>
+                            <span>Sign out</span>
+                        </button>
+                    </li>
                 </ul>
-                <div className="sidebar-user">
-                    <span className="sidebar-avatar" aria-hidden="true">
-                        {profileUser?.fullName?.trim().charAt(0)?.toUpperCase() || "S"}
-                    </span>
-                    <span className="sidebar-user-copy">
-                        <strong>{profileUser?.fullName || "SmartCampus user"}</strong>
-                        <span>{profileUser?.role || "Member"}</span>
-                    </span>
-                </div>
-                <button type="button" className="nav-link link-btn" onClick={handleLogout}>
-                    <span className="nav-link-icon"><FaDoorOpen /></span>
-                    <span>Sign out</span>
-                </button>
-            </div>
+            </nav>
         </aside>
     );
 };

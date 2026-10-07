@@ -13,13 +13,15 @@ router.delete("/modules/:id", requireRole("lecturer"), lmsController.deleteModul
 router.get("/courses/:courseId/progress", lmsController.getCourseProgress);
 
 router.get("/courses/:courseId/announcements", lmsController.listAnnouncements);
-router.post("/courses/:courseId/announcements", requireRole("lecturer"), lmsController.createAnnouncement);
+router.post("/courses/:courseId/announcements", requireRole("student", "lecturer"), lmsController.createAnnouncement);
 router.patch("/announcements/:id", requireRole("lecturer"), lmsController.updateAnnouncement);
 router.delete("/announcements/:id", requireRole("lecturer"), lmsController.deleteAnnouncement);
+router.get("/announcements/my", requireRole("student"), lmsController.listMyAnnouncements);
+router.post("/announcements/broadcast", requireRole("lecturer"), lmsController.broadcastAnnouncement);
 
-router.get("/courses/:courseId/conversations", lmsController.listConversations);
-router.get("/courses/:courseId/conversations/:userId", lmsController.listMessages);
-router.post("/courses/:courseId/messages", lmsController.sendMessage);
+router.get("/courses/:courseId/conversations", requireRole("student"), lmsController.listConversations);
+router.get("/courses/:courseId/conversations/:userId", requireRole("student"), lmsController.listMessages);
+router.post("/courses/:courseId/messages", requireRole("student"), lmsController.sendMessage);
 
 router.get("/notifications", lmsController.listNotifications);
 router.patch("/notifications/read-all", lmsController.markAllNotificationsRead);
