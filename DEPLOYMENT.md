@@ -224,8 +224,10 @@ Vite bakes this in at **build time**. After changing it on Netlify, trigger a **
 
 ### CORS / “Network Error” in the browser
 
+- First open `https://YOUR-RENDER-URL/health`. The SmartCampus Node API must return `{"status":"ok"}`. If it returns a 404, a different server response, or a `uvicorn` server header, the URL is not serving this project's backend. In Render, deploy this repository's root `render.yaml` Blueprint, or create a Node Web Service with root directory `backend`, build command `npm install`, and start command `npm start`.
 - `CLIENT_URL` on Render should exactly match your Netlify URL (including `https://`, no trailing slash). The current production Netlify URL is allowed by default; set this variable for additional URLs or previews.
 - Redeploy the backend after changing `CLIENT_URL`.
+- If the correct backend is deployed at a different URL, update Netlify's `VITE_API_URL` to that API origin and redeploy the frontend.
 
 ### Frontend still calls localhost
 

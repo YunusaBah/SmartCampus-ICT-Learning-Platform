@@ -76,7 +76,7 @@ const Login = () => {
         } catch (error) {
             setError(error.response?.data?.message || (
                 error.code === "ECONNABORTED" || error.code === "ERR_NETWORK"
-                    ? `SmartCampus could not reach the API at ${API_BASE}. Check that the backend is running and that VITE_API_URL points to the correct server.`
+                    ? `SmartCampus could not reach the API at ${API_BASE}. Check that ${API_BASE}/health returns status ok, VITE_API_URL points to your Node API, and Render's CLIENT_URL includes this Netlify site.`
                     : "Login failed. Please try again."
             ));
         } finally {
