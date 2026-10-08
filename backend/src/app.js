@@ -23,6 +23,7 @@ app.set("trust proxy", 1);
 const allowedOrigins = [
     "http://localhost:5173",
     "https://charming-cucurucho-472417.netlify.app",
+    "https://smartcampus-utg-gambia.netlify.app",
     ...(process.env.CLIENT_URL || "").split(",")
 ]
     .map((origin) => origin.trim())

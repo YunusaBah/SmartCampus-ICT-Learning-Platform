@@ -171,13 +171,13 @@ VITE_API_URL = https://YOUR-RENDER-URL.onrender.com
 1. In **Render** → your API service → **Environment**, set:
 
 ```
-CLIENT_URL=https://charming-cucurucho-472417.netlify.app
+CLIENT_URL=https://smartcampus-utg-gambia.netlify.app
 ```
 
 For multiple URLs (e.g. preview + production), use commas:
 
 ```
-https://smartcampus.netlify.app,https://deploy-preview-123--smartcampus.netlify.app
+https://smartcampus-utg-gambia.netlify.app,https://deploy-preview-123--smartcampus.netlify.app
 ```
 
 2. **Save** and **Manual Deploy** the backend so CORS picks up the new origin.
