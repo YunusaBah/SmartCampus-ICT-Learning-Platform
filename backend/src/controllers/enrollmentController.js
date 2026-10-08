@@ -1,8 +1,18 @@
 const Enrollment = require("../models/Enrollment");
 const Course = require("../models/Course");
+const User = require("../models/User");
 
 exports.joinByCode = async (req, res) => {
     try {
+        const student = await User.findByPk(req.user.id, {
+            attributes: ["fullName", "email", "matNumber", "phone"]
+        });
+        if (!student || !student.fullName || !student.email || !student.matNumber || !student.phone) {
+            return res.status(400).json({
+                message: "Complete your name, email, student ID, and phone number before joining a class."
+            });
+        }
+
         const { classCode } = req.body;
         if (typeof classCode !== "string" || !classCode.trim()) {
             return res.status(400).json({ message: "Class code is required" });

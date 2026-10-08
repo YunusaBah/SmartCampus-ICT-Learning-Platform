@@ -969,6 +969,64 @@ body {
     outline-offset: 2px;
 }
 
+.google-signin-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 18px;
+}
+
+.google-signin-copy,
+.google-signin-notice,
+.google-signin-loading {
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.google-signin-wrap {
+    width: min(100%, 360px);
+    min-height: 40px;
+}
+
+.google-signin-button {
+    display: flex;
+    justify-content: center;
+    min-height: 40px;
+}
+
+.google-signin-notice {
+    margin: 0;
+    padding: 11px;
+    border: 1px solid rgba(238, 133, 133, 0.35);
+    border-radius: 7px;
+    background: rgba(212, 86, 86, 0.12);
+}
+
+.google-signin-loading {
+    display: block;
+    margin: 0;
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 18px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.72rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    height: 1px;
+    flex: 1;
+    background: rgba(255, 255, 255, 0.18);
+    content: "";
+}
+
 .login-form .btn {
     min-height: 47px;
     margin-top: 5px;
@@ -1247,6 +1305,15 @@ body {
     grid-column: 1 / -1;
 }
 
+.register-form > label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
 .register-form > input,
 .register-form input,
 .register-form select {
@@ -1301,6 +1368,23 @@ body {
 
 .register-form .register-submit:hover {
     background: #c75e10;
+}
+
+.account-type-picker button:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.offline-banner {
+    position: relative;
+    z-index: 5;
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--theme-border);
+    background: #fff1cf;
+    color: #55380a;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
 }
 
 .register-error {
@@ -3817,6 +3901,17 @@ body {
     font-size: 0.87rem;
 }
 
+.settings-form input:read-only {
+    cursor: not-allowed;
+    opacity: 0.82;
+}
+
+.settings-field-hint {
+    color: var(--theme-muted);
+    font-size: 0.72rem;
+    font-weight: 400;
+}
+
 .settings-form input:focus-visible,
 .catalog-search input:focus-visible {
     outline: 2px solid var(--theme-accent);
@@ -4665,6 +4760,19 @@ a:focus-visible {
 :root[data-theme="light"] .developer-profile-content li,
 :root[data-theme="light"] .login-form label {
     color: rgba(255, 255, 255, 0.9);
+}
+
+:root[data-theme="light"] .google-signin-copy,
+:root[data-theme="light"] .google-signin-notice,
+:root[data-theme="light"] .google-signin-loading,
+:root[data-theme="light"] .auth-divider {
+    color: rgba(255, 255, 255, 0.78);
+}
+
+:root[data-theme="light"] .offline-banner {
+    border-bottom-color: rgba(223, 116, 27, 0.32);
+    background: #382b18;
+    color: #ffdf9a;
 }
 
 :root[data-theme="light"] .login-modal-card .login-eyebrow,

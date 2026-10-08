@@ -2,20 +2,27 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import API from "../services/api";
 import API_BASE from "../config";
+import GoogleSignInButton from "../components/GoogleSignInButton";
+
+const saveSession = (result) => {
+    localStorage.setItem("token", result.data.token);
+    localStorage.setItem("user", JSON.stringify(result.data.user));
+    window.dispatchEvent(new Event("smartcampus:account-changed"));
+};
 
 const Register = ({ embedded = false, onClose, onSuccess, onLogin }) => {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         fullName: "",
-        email: "",
-        password: "",
-        role: "",
         matNumber: "",
         phone: "",
-        lecturerCode: ""
+        role: ""
     });
     const [error, setError] = useState("");
+    const [message, setMessage] = useState("");
     const [loading, setLoading] = useState(false);
+    const [googleCredential, setGoogleCredential] = useState("");
+    const [verifiedAccount, setVerifiedAccount] = useState(null);
 
     useEffect(() => {
         if (!embedded) return undefined;
@@ -34,32 +41,58 @@ const Register = ({ embedded = false, onClose, onSuccess, onLogin }) => {
         };
     }, [embedded, onClose]);
 
-    const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-        setError("");
+    const finishSignup = (result) => {
+        saveSession(result);
+        if (onSuccess) onSuccess();
+        navigate("/dashboard", { replace: true });
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+    const completeRegistration = async (credential, profile = {}) => {
         setLoading(true);
+        setError("");
+        setMessage("");
         try {
-            await API.post("/auth/register", formData);
-            if (onSuccess) {
-                onSuccess();
+            const response = await API.post("/auth/google/register", {
+                credential,
+                role: formData.role,
+                ...profile
+            });
+            finishSignup(response);
+        } catch (registrationError) {
+            if (registrationError.response?.status === 428 &&
+                registrationError.response.data?.profileRequired) {
+                setGoogleCredential(credential);
+                setVerifiedAccount(registrationError.response.data.profile);
+                setFormData((current) => ({
+                    ...current,
+                    fullName: registrationError.response.data.profile.fullName
+                }));
+                setMessage("Google verified your account. Add the required student details to finish.");
             } else {
-                navigate("/login", {
-                    state: { message: "Registration successful! Please log in." }
-                });
+                setError(registrationError.response?.data?.message || (
+                    registrationError.code === "ECONNABORTED" || registrationError.code === "ERR_NETWORK"
+                        ? `SmartCampus could not reach the API at ${API_BASE}. Check your connection and try again.`
+                        : "Google registration failed. Please try again."
+                ));
             }
-        } catch (error) {
-            setError(error.response?.data?.message || (
-                error.code === "ECONNABORTED" || error.code === "ERR_NETWORK"
-                    ? `SmartCampus could not reach the API at ${API_BASE}. Check that ${API_BASE}/health returns status ok, VITE_API_URL points to your Node API, and Render's CLIENT_URL includes this Netlify site.`
-                    : "Registration failed. Please try again."
-            ));
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleCredential = (credential) => {
+        if (loading) return;
+        completeRegistration(credential);
+    };
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        if (!googleCredential) return;
+        await completeRegistration(googleCredential, {
+            fullName: formData.fullName,
+            matNumber: formData.matNumber,
+            phone: formData.phone
+        });
     };
 
     const formCard = (
@@ -82,10 +115,11 @@ const Register = ({ embedded = false, onClose, onSuccess, onLogin }) => {
             <header className="register-heading">
                 <p className="register-eyebrow">THE UNIVERSITY OF THE GAMBIA</p>
                 <h2 id="register-title">Create your account</h2>
-                <p>Choose your account type to see the registration form.</p>
+                <p>Choose your account type and verify your Google email to continue.</p>
             </header>
 
             {error && <p className="register-error" role="alert">{error}</p>}
+            {message && <p className="login-success" role="status">{message}</p>}
 
             <div className="account-type-picker" aria-label="Choose account type">
                 {["student", "lecturer"].map((role) => (
@@ -94,9 +128,11 @@ const Register = ({ embedded = false, onClose, onSuccess, onLogin }) => {
                         key={role}
                         type="button"
                         aria-pressed={formData.role === role}
+                        disabled={loading || Boolean(googleCredential)}
                         onClick={() => {
                             setFormData((current) => ({ ...current, role }));
                             setError("");
+                            setMessage("");
                         }}
                     >
                         {role === "student" ? "Student" : "Lecturer"}
@@ -104,76 +140,79 @@ const Register = ({ embedded = false, onClose, onSuccess, onLogin }) => {
                 ))}
             </div>
 
-            {formData.role && <form className="register-form" onSubmit={handleSubmit}>
-                <input
-                    type="text"
-                    name="fullName"
-                    placeholder="Full Name"
-                    autoComplete="name"
-                    onChange={handleChange}
-                    required
-                />
-                <input
-                    type="email"
-                    name="email"
-                    placeholder="Email"
-                    onChange={handleChange}
-                    required
-                />
-                <input
-                    type="password"
-                    name="password"
-                    placeholder="Password (min 6 characters)"
-                    onChange={handleChange}
-                    minLength={6}
-                    required
-                />
+            {formData.role && !googleCredential && (
+                <div className="google-signin-section">
+                    <p className="google-signin-copy">
+                        {formData.role === "student"
+                            ? "Verify a UTG or other active Google email. Student details are required before joining classes."
+                            : "Use your active Google account to open the lecturer workspace."}
+                    </p>
+                    <GoogleSignInButton
+                        text="signup_with"
+                        onCredential={handleCredential}
+                        onError={setError}
+                    />
+                    {loading && <p className="google-signin-loading" role="status">Verifying your Google account…</p>}
+                </div>
+            )}
 
-                {formData.role === "student" && (
-                    <>
+            {googleCredential && verifiedAccount && formData.role === "student" && (
+                <form className="register-form" onSubmit={handleSubmit}>
+                    <label className="verified-email">
+                        Verified Google email
+                        <input type="email" value={verifiedAccount.email} readOnly />
+                    </label>
+                    <label>
+                        Full name
+                        <input
+                            type="text"
+                            name="fullName"
+                            autoComplete="name"
+                            value={formData.fullName}
+                            onChange={(event) => setFormData((current) => ({
+                                ...current,
+                                fullName: event.target.value
+                            }))}
+                            minLength={2}
+                            maxLength={255}
+                            required
+                        />
+                    </label>
+                    <label>
+                        Student ID / matriculation number
                         <input
                             type="text"
                             name="matNumber"
-                            placeholder="Student ID / Matriculation number"
-                            maxLength={50}
                             autoComplete="off"
                             value={formData.matNumber}
-                            onChange={handleChange}
+                            onChange={(event) => setFormData((current) => ({
+                                ...current,
+                                matNumber: event.target.value
+                            }))}
+                            maxLength={50}
                             required
                         />
+                    </label>
+                    <label>
+                        Phone number
                         <input
                             type="tel"
                             name="phone"
-                            placeholder="Phone number"
-                            maxLength={30}
                             autoComplete="tel"
                             value={formData.phone}
-                            onChange={handleChange}
+                            onChange={(event) => setFormData((current) => ({
+                                ...current,
+                                phone: event.target.value
+                            }))}
+                            maxLength={30}
                             required
                         />
-                    </>
-                )}
-
-                {formData.role === "lecturer" && (
-                    <div className="register-lecturer-field">
-                        <p className="register-lecturer-hint">
-                            Enter the lecturer code to create a lecturer account.
-                        </p>
-                        <input
-                            type="text"
-                            name="lecturerCode"
-                            placeholder="Lecturer code"
-                            value={formData.lecturerCode}
-                            onChange={handleChange}
-                            required
-                        />
-                    </div>
-                )}
-
-                <button className="btn register-submit" type="submit" disabled={loading}>
-                    {loading ? "Registering..." : "Register"}
-                </button>
-            </form>}
+                    </label>
+                    <button className="btn register-submit" type="submit" disabled={loading}>
+                        {loading ? "Creating account…" : "Complete student registration"}
+                    </button>
+                </form>
+            )}
 
             <p className="register-login-link">
                 Already have an account?{" "}

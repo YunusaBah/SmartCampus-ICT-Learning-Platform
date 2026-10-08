@@ -49,8 +49,8 @@ npm run seed
 Quick overview:
 
 1. **Railway** — create a MySQL database and copy `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`, `MYSQLPASSWORD`, `MYSQLDATABASE`.
-2. **Render** — deploy `backend` using `render.yaml`; set `DB_*`, `JWT_SECRET`, `LECTURER_CODE`, `ANTHROPIC_API_KEY`.
-3. **Netlify** — deploy `frontend` (uses `frontend/netlify.toml`); set `VITE_API_URL` to your Render URL.
+2. **Render** — deploy `backend` using `render.yaml`; set `DB_*`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `ANTHROPIC_API_KEY`.
+3. **Netlify** — deploy `frontend` (uses `frontend/netlify.toml`); set `VITE_API_URL` and `VITE_GOOGLE_CLIENT_ID`.
 4. **Render** — set `CLIENT_URL` to your Netlify URL and redeploy for CORS.
 
 > Render free tier has no persistent disk — uploaded files may be lost on restart. Fine for demos.
@@ -70,5 +70,6 @@ See `backend/.env.example`.
 | Variable | Description |
 |----------|-------------|
 | `VITE_API_URL` | Backend base URL (no `/api` suffix) |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth Web client ID for sign-in |
 
 Local dev uses `frontend/.env.development` (`http://localhost:5000`). Production value is set in the Netlify dashboard or when building locally for CLI deploy.

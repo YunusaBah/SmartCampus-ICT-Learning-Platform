@@ -30,6 +30,18 @@ const User = sequelize.define("User", {
         }
     },
 
+    googleId: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        unique: "users_google_id_unique"
+    },
+
+    passwordLoginEnabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+    },
+
     password: {
         type: DataTypes.STRING,
         allowNull: false,

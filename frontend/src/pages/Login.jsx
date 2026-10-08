@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import API from "../services/api";
 import API_BASE from "../config";
 import Register from "./Register";
+import GoogleSignInButton from "../components/GoogleSignInButton";
 
 const Login = () => {
     const navigate = useNavigate();
@@ -17,6 +18,13 @@ const Login = () => {
     const [developerOpen, setDeveloperOpen] = useState(false);
     const [loginRole, setLoginRole] = useState("");
     const [registrationMessage, setRegistrationMessage] = useState("");
+
+    const finishLogin = (result) => {
+        localStorage.setItem("token", result.data.token);
+        localStorage.setItem("user", JSON.stringify(result.data.user));
+        window.dispatchEvent(new Event("smartcampus:account-changed"));
+        navigate("/dashboard");
+    };
 
     useEffect(() => {
         if (!loginOpen && !registerOpen && !developerOpen) return undefined;
@@ -69,15 +77,33 @@ const Login = () => {
                 setError(`This account is registered as a ${res.data.user.role}. Choose ${res.data.user.role} to sign in.`);
                 return;
             }
-            localStorage.setItem("token", res.data.token);
-            localStorage.setItem("user", JSON.stringify(res.data.user));
-            window.dispatchEvent(new Event("smartcampus:account-changed"));
-            navigate("/dashboard");
+            finishLogin(res);
         } catch (error) {
             setError(error.response?.data?.message || (
                 error.code === "ECONNABORTED" || error.code === "ERR_NETWORK"
                     ? `SmartCampus could not reach the API at ${API_BASE}. Check that ${API_BASE}/health returns status ok, VITE_API_URL points to your Node API, and Render's CLIENT_URL includes this Netlify site.`
                     : "Login failed. Please try again."
+            ));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGoogleCredential = async (credential) => {
+        if (!loginRole || loading) return;
+        setLoading(true);
+        setError("");
+        try {
+            const response = await API.post("/auth/google/login", {
+                credential,
+                role: loginRole
+            });
+            finishLogin(response);
+        } catch (googleError) {
+            setError(googleError.response?.data?.message || (
+                googleError.code === "ECONNABORTED" || googleError.code === "ERR_NETWORK"
+                    ? `SmartCampus could not reach the API at ${API_BASE}. Check your connection and try again.`
+                    : "Google login failed. Please try again."
             ));
         } finally {
             setLoading(false);
@@ -257,6 +283,17 @@ const Login = () => {
                         {loginRole && (
                             <>
                                 {error && <p className="login-error" role="alert">{error}</p>}
+                                <div className="google-signin-section">
+                                    <p className="google-signin-copy">
+                                        Sign in with the Google account used to create your {loginRole} account.
+                                    </p>
+                                    <GoogleSignInButton
+                                        onCredential={handleGoogleCredential}
+                                        onError={setError}
+                                    />
+                                    {loading && <p className="google-signin-loading" role="status">Signing in…</p>}
+                                </div>
+                                <div className="auth-divider"><span>or use your password</span></div>
                                 <form className="login-form" onSubmit={handleSubmit}>
                                     <label>
                                         {loginRole === "student" ? "Student email" : "Lecturer email"}

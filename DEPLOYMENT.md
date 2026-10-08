@@ -13,6 +13,7 @@ Deploy **MySQL** on Railway, the **API** on Render, and the **React frontend** o
 | Railway account | [railway.app](https://railway.app) |
 | Render account | [render.com](https://render.com) |
 | Netlify account | [netlify.com](https://netlify.com) |
+| Google OAuth Web client ID | Create a Web application OAuth client in [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | Anthropic API key | For the AI assistant (optional but recommended) |
 | A long random string | For `JWT_SECRET` (e.g. 32+ random characters) |
 
@@ -62,7 +63,7 @@ Render needs your code from a Git repository. **You control when and what you pu
 | `DB_NAME` | Railway `MYSQLDATABASE` |
 | `DB_SSL` | `true` |
 | `JWT_SECRET` | Your long random secret |
-| `LECTURER_CODE` | Code students need to register as lecturer (e.g. `LECT2024`) |
+| `GOOGLE_CLIENT_ID` | Your Google OAuth Web client ID |
 | `CLIENT_URL` | Leave blank for now — set after Step 3 |
 | `ANTHROPIC_API_KEY` | Your Anthropic key |
 
@@ -126,6 +127,7 @@ netlify login
 cd frontend
 npm install
 $env:VITE_API_URL="https://YOUR-RENDER-URL.onrender.com"
+$env:VITE_GOOGLE_CLIENT_ID="YOUR-GOOGLE-OAUTH-WEB-CLIENT-ID"
 npm run build
 ```
 
@@ -153,15 +155,18 @@ Follow the prompts to create a new site. Netlify prints your live URL (e.g. `htt
 
 ```
 VITE_API_URL = https://YOUR-RENDER-URL.onrender.com
+VITE_GOOGLE_CLIENT_ID = YOUR-GOOGLE-OAUTH-WEB-CLIENT-ID
 ```
 
-(No trailing slash.)
+(No trailing slash for `VITE_API_URL`.) The Google client ID must match `GOOGLE_CLIENT_ID` on Render. In Google Cloud Console, add your Netlify site and `http://localhost:5173` as authorized JavaScript origins.
+
+To create the client ID, open Google Cloud Console → **APIs & Services** → **Credentials** → **Create credentials** → **OAuth client ID** → **Web application**. Add the production Netlify URL and `http://localhost:5173` to **Authorized JavaScript origins**, then copy the client ID (not a client secret) into both Render and Netlify. For local development, put `VITE_GOOGLE_CLIENT_ID` in the ignored `frontend/.env.development` file.
 
 5. **Deploy site**. Copy the Netlify URL.
 
 ### Option C — Manual drag-and-drop
 
-1. Build locally with `VITE_API_URL` set (see Option A, step 2).
+1. Build locally with both `VITE_API_URL` and `VITE_GOOGLE_CLIENT_ID` set.
 2. Go to [Netlify Drop](https://app.netlify.com/drop) and drag the `frontend/dist` folder onto the page.
 
 ---
@@ -180,8 +185,9 @@ For multiple URLs (e.g. preview + production), use commas:
 https://smartcampus-utg-gambia.netlify.app,https://deploy-preview-123--smartcampus.netlify.app
 ```
 
-2. **Save** and **Manual Deploy** the backend so CORS picks up the new origin.
-3. Open your Netlify site, register or log in, and test courses, uploads, and the AI assistant.
+2. **Save** and **Manual Deploy** the backend so CORS and Google sign-in configuration take effect.
+3. Open your Netlify site, choose Student or Lecturer, and create an account with a verified Google account. Students must provide their full name, student ID, and phone number before joining a class. Legacy accounts can still sign in with their email and password or link the same Google account.
+4. Set `VITE_GOOGLE_CLIENT_ID` in Netlify and redeploy the frontend after setting the matching `GOOGLE_CLIENT_ID` in Render.
 
 ---
 
@@ -192,7 +198,8 @@ https://smartcampus-utg-gambia.netlify.app,https://deploy-preview-123--smartcamp
 | API health | `https://YOUR-RENDER-URL/health` → `{"status":"ok"}` |
 | API root | `https://YOUR-RENDER-URL/` → welcome JSON |
 | Frontend loads | Netlify URL opens login page |
-| Login works | Use seed accounts or register |
+| Login works | Use a legacy seed account or create a verified Google account |
+| Offline navigation | Open pages once while online; previously loaded API data is cached on that device |
 | CORS | Browser console has no blocked requests to Render |
 | Cold start | Render free tier sleeps after ~15 min idle; first request may take 30–60 seconds |
 

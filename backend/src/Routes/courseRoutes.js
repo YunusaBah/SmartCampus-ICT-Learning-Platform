@@ -7,7 +7,7 @@ const requireRole = require("../middlewares/roleMiddleware");
 const gradebookController = require("../controllers/gradebookController");
 const lmsController = require("../controllers/lmsController");
 
-router.get("/", authMiddleware, courseController.getCourses);
+router.get("/", authMiddleware, requireRole("student"), courseController.getCourses);
 
 router.get(
     "/my",

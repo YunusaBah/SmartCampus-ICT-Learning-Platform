@@ -10,6 +10,7 @@ const reconcileLmsSchemaMigrationName = "20261004_06_reconcile_lms_columns";
 const userTokenVersionMigrationName = "20261007_02_ensure_user_token_version";
 const reconcileSchemaMigrationName = "20261007_03_reconcile_existing_tables";
 const reconcileCalendarAndAssessmentMigrationName = "20261007_04_reconcile_calendar_assessments";
+const googleAccountMigrationName = "20261008_01_add_google_account_id";
 const additions = {
     Users: {
         tokenVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
@@ -287,6 +288,41 @@ module.exports = async () => {
         }
         await queryInterface.bulkInsert("SchemaMigrations", [{
             name: reconcileCalendarAndAssessmentMigrationName,
+            appliedAt: new Date()
+        }]);
+    }
+
+    const googleAccountApplied = await queryInterface.select(null, "SchemaMigrations", {
+        where: { name: googleAccountMigrationName },
+        limit: 1
+    });
+    if (!googleAccountApplied.length) {
+        tables = await getTables(queryInterface);
+        if (hasTable(tables, "Users")) {
+            const userColumns = await queryInterface.describeTable("Users");
+            if (!Object.prototype.hasOwnProperty.call(userColumns, "googleId")) {
+                await queryInterface.addColumn("Users", "googleId", {
+                    type: DataTypes.STRING(255),
+                    allowNull: true
+                });
+            }
+            if (!Object.prototype.hasOwnProperty.call(userColumns, "passwordLoginEnabled")) {
+                await queryInterface.addColumn("Users", "passwordLoginEnabled", {
+                    type: DataTypes.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: true
+                });
+            }
+            const indexes = await queryInterface.showIndex("Users");
+            if (!indexes.some((index) => index.name === "users_google_id_unique")) {
+                await queryInterface.addIndex("Users", ["googleId"], {
+                    unique: true,
+                    name: "users_google_id_unique"
+                });
+            }
+        }
+        await queryInterface.bulkInsert("SchemaMigrations", [{
+            name: googleAccountMigrationName,
             appliedAt: new Date()
         }]);
     }

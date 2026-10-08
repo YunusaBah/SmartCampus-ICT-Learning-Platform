@@ -120,9 +120,11 @@ const Settings = ({ theme, setTheme }) => {
                             type="email"
                             maxLength={254}
                             required
+                            readOnly={user?.googleLinked}
                             value={profile.email}
                             onChange={(event) => setProfile({ ...profile, email: event.target.value })}
                         />
+                        {user?.googleLinked && <small className="settings-field-hint">Email is verified by your Google account and cannot be edited here.</small>}
                     </label>
                     {user?.role === "student" && (
                         <>
@@ -159,7 +161,7 @@ const Settings = ({ theme, setTheme }) => {
                 </form>
             </section>
 
-            <section className="settings-section">
+            {user?.passwordLoginEnabled !== false && <section className="settings-section">
                 <div className="settings-section-heading">
                     <span className="settings-section-icon"><FaShieldAlt /></span>
                     <div>
@@ -211,7 +213,7 @@ const Settings = ({ theme, setTheme }) => {
                         </button>
                     </div>
                 </form>
-            </section>
+            </section>}
 
             <section className="settings-section">
                 <div className="settings-section-heading">
