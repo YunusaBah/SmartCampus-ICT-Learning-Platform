@@ -5,12 +5,16 @@ const Lesson = require("./Lesson");
 const Quiz = require("./Quiz");
 const QuizResult = require("./QuizResult");
 const Assignment = require("./Assignment");
+const AssignmentRead = require("./AssignmentRead");
 const Submission = require("./Submission");
 const Module = require("./Module");
 const LessonProgress = require("./LessonProgress");
 const QuizAssessment = require("./QuizAssessment");
 const QuizAttempt = require("./QuizAttempt");
+const QuizAttemptAnswer = require("./QuizAttemptAnswer");
 const Announcement = require("./Announcement");
+const AnnouncementReaction = require("./AnnouncementReaction");
+const AnnouncementView = require("./AnnouncementView");
 const Message = require("./Message");
 const Notification = require("./Notification");
 const CalendarEvent = require("./CalendarEvent");
@@ -28,6 +32,8 @@ User.hasMany(Course, { foreignKey: "lecturerId", as: "courses" });
 
 Course.hasMany(Lesson, { foreignKey: "courseId", as: "lessons" });
 Lesson.belongsTo(Course, { foreignKey: "courseId", as: "course" });
+User.hasMany(Lesson, { foreignKey: "uploadedById", as: "uploadedLessons" });
+Lesson.belongsTo(User, { foreignKey: "uploadedById", as: "uploader" });
 Course.hasMany(Module, { foreignKey: "courseId", as: "modules" });
 Module.belongsTo(Course, { foreignKey: "courseId", as: "course" });
 Module.hasMany(Lesson, { foreignKey: "moduleId", as: "lessons" });
@@ -45,11 +51,19 @@ QuizAssessment.hasMany(Quiz, { foreignKey: "assessmentId", as: "questions" });
 Quiz.belongsTo(QuizAssessment, { foreignKey: "assessmentId", as: "assessment" });
 QuizAssessment.hasMany(QuizAttempt, { foreignKey: "assessmentId", as: "attempts" });
 QuizAttempt.belongsTo(QuizAssessment, { foreignKey: "assessmentId", as: "assessment" });
+QuizAttempt.hasMany(QuizAttemptAnswer, { foreignKey: "attemptId", as: "responses" });
+QuizAttemptAnswer.belongsTo(QuizAttempt, { foreignKey: "attemptId", as: "attempt" });
+Quiz.hasMany(QuizAttemptAnswer, { foreignKey: "questionId", as: "attemptAnswers" });
+QuizAttemptAnswer.belongsTo(Quiz, { foreignKey: "questionId", as: "question" });
 User.hasMany(QuizAttempt, { foreignKey: "studentId", as: "quizAttempts" });
 QuizAttempt.belongsTo(User, { foreignKey: "studentId", as: "student" });
 
 Course.hasMany(Assignment, { foreignKey: "courseId", as: "assignments" });
 Assignment.belongsTo(Course, { foreignKey: "courseId", as: "course" });
+Assignment.hasMany(AssignmentRead, { foreignKey: "assignmentId", as: "reads" });
+AssignmentRead.belongsTo(Assignment, { foreignKey: "assignmentId", as: "assignment" });
+User.hasMany(AssignmentRead, { foreignKey: "studentId", as: "assignmentReads" });
+AssignmentRead.belongsTo(User, { foreignKey: "studentId", as: "student" });
 
 User.hasMany(Submission, { foreignKey: "studentId", as: "submissions" });
 Submission.belongsTo(User, { foreignKey: "studentId", as: "student" });
@@ -68,6 +82,14 @@ Department.hasMany(Course, { foreignKey: "departmentId", as: "courses" });
 Course.hasMany(Announcement, { foreignKey: "courseId", as: "announcements" });
 Announcement.belongsTo(Course, { foreignKey: "courseId", as: "course" });
 Announcement.belongsTo(User, { foreignKey: "createdById", as: "author" });
+Announcement.hasMany(AnnouncementReaction, { foreignKey: "announcementId", as: "reactions" });
+AnnouncementReaction.belongsTo(Announcement, { foreignKey: "announcementId", as: "announcement" });
+Announcement.hasMany(AnnouncementView, { foreignKey: "announcementId", as: "views" });
+AnnouncementView.belongsTo(Announcement, { foreignKey: "announcementId", as: "announcement" });
+User.hasMany(AnnouncementReaction, { foreignKey: "userId", as: "announcementReactions" });
+AnnouncementReaction.belongsTo(User, { foreignKey: "userId", as: "user" });
+User.hasMany(AnnouncementView, { foreignKey: "userId", as: "announcementViews" });
+AnnouncementView.belongsTo(User, { foreignKey: "userId", as: "user" });
 Course.hasMany(Message, { foreignKey: "courseId", as: "messages" });
 Message.belongsTo(Course, { foreignKey: "courseId", as: "course" });
 Message.belongsTo(User, { foreignKey: "senderId", as: "sender" });
@@ -90,12 +112,16 @@ module.exports = {
     Quiz,
     QuizResult,
     Assignment,
+    AssignmentRead,
     Submission,
     Module,
     LessonProgress,
     QuizAssessment,
     QuizAttempt,
+    QuizAttemptAnswer,
     Announcement,
+    AnnouncementReaction,
+    AnnouncementView,
     Message,
     Notification,
     CalendarEvent,

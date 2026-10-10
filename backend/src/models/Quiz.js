@@ -16,27 +16,39 @@ const Quiz = sequelize.define("Quiz", {
 
     optionA: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: true
     },
 
     optionB: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: true
     },
 
     optionC: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: true
     },
 
     optionD: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: true
     },
 
     correctAnswer: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: true
+    },
+
+    questionType: {
+        type: DataTypes.STRING(10),
+        allowNull: false,
+        defaultValue: "MCQ"
+    },
+
+    marks: {
+        type: DataTypes.DECIMAL(8, 2),
+        allowNull: false,
+        defaultValue: 1
     },
 
     courseId: {

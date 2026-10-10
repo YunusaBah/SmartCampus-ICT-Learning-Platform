@@ -6,5 +6,8 @@ module.exports = sequelize.define("Announcement", {
     title: { type: DataTypes.STRING, allowNull: false },
     body: { type: DataTypes.TEXT, allowNull: false },
     courseId: { type: DataTypes.INTEGER, allowNull: false },
-    createdById: { type: DataTypes.INTEGER, allowNull: false }
+    createdById: { type: DataTypes.INTEGER, allowNull: false },
+    authorRoleName: { type: DataTypes.STRING(80), allowNull: true }
+}, {
+    indexes: [{ fields: ["courseId", "createdAt"] }]
 });

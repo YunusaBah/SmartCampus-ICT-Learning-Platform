@@ -10,7 +10,15 @@ router.post(
     "/",
     authMiddleware,
     requireRole("lecturer"),
+    upload.single("file"),
     assignmentController.createAssignment
+);
+
+router.patch(
+    "/:id",
+    authMiddleware,
+    requireRole("lecturer"),
+    assignmentController.updateAssignment
 );
 
 router.get(
@@ -25,6 +33,13 @@ router.get(
     authMiddleware,
     requireRole("student"),
     assignmentController.getMySubmissions
+);
+
+router.patch(
+    "/:id/read",
+    authMiddleware,
+    requireRole("student"),
+    assignmentController.markAssignmentRead
 );
 
 router.get(

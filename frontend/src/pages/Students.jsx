@@ -7,6 +7,8 @@ const Students = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [search, setSearch] = useState("");
+    const [courseFilter, setCourseFilter] = useState("all");
+    const [sortBy, setSortBy] = useState("name");
 
     useEffect(() => {
         let active = true;
@@ -27,11 +29,22 @@ const Students = () => {
         return () => { active = false; };
     }, []);
 
-    const filteredStudents = students.filter((student) =>
-        `${student.fullName} ${student.matNumber || ""} ${student.phone || ""} ${student.email} ${student.courseTitle}`
-            .toLowerCase()
-            .includes(search.trim().toLowerCase())
-    );
+    const courses = [...new Map(students.map((student) => [
+        String(student.courseId),
+        { id: student.courseId, title: student.courseTitle }
+    ])).values()].sort((left, right) => left.title.localeCompare(right.title));
+    const filteredStudents = students
+        .filter((student) =>
+            (courseFilter === "all" || String(student.courseId) === courseFilter) &&
+            `${student.fullName} ${student.matNumber || ""} ${student.phone || ""} ${student.email} ${student.courseTitle}`
+                .toLowerCase()
+                .includes(search.trim().toLowerCase())
+        )
+        .sort((left, right) => {
+            const leftValue = sortBy === "matNumber" ? left.matNumber || "" : left.fullName || "";
+            const rightValue = sortBy === "matNumber" ? right.matNumber || "" : right.fullName || "";
+            return leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: "base" });
+        });
 
     return (
         <div className="page-content students-page">
@@ -52,16 +65,34 @@ const Students = () => {
 
             {!loading && !error && students.length > 0 && (
                 <>
-                    <label className="catalog-search">
-                        <FaSearch aria-hidden="true" />
-                        <span className="sr-only">Search your students</span>
-                        <input
-                            type="search"
-                            placeholder="Search by student or course"
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                        />
-                    </label>
+                    <div className="student-list-controls">
+                        <label className="catalog-search">
+                            <FaSearch aria-hidden="true" />
+                            <span className="sr-only">Search your students</span>
+                            <input
+                                type="search"
+                                placeholder="Search by name, matric number, or email"
+                                value={search}
+                                onChange={(event) => setSearch(event.target.value)}
+                            />
+                        </label>
+                        <label className="materials-course-filter">
+                            <span>Course</span>
+                            <select value={courseFilter} onChange={(event) => setCourseFilter(event.target.value)}>
+                                <option value="all">All courses</option>
+                                {courses.map((course) => (
+                                    <option key={course.id} value={String(course.id)}>{course.title}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="materials-course-filter">
+                            <span>Sort by</span>
+                            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                                <option value="name">Name (A-Z)</option>
+                                <option value="matNumber">Matric number</option>
+                            </select>
+                        </label>
+                    </div>
                     {filteredStudents.length ? (
                         <div className="student-table-scroll">
                             <table className="student-table">

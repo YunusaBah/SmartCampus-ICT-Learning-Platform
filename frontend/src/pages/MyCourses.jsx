@@ -14,20 +14,20 @@ const MyCourses = () => {
     return (
         <div className="page-content">
             <h1>My Courses</h1>
-            <div className="card-grid">
+            <div className="course-list">
                 {courses.length === 0 && (
                     <p>
                         No enrolled courses. <Link to="/courses">Browse courses</Link> to enroll.
                     </p>
                 )}
                 {courses.map((course) => (
-                    <div className="card" key={course.id}>
-                        <h3>{course.title}</h3>
-                        <p>{course.description}</p>
-                        <Link to={`/courses/${course.id}`} className="btn btn-inline">
-                            Open Classroom
-                        </Link>
-                    </div>
+                    <Link to={`/courses/${course.id}?section=overview`} className="course-list-item" key={course.id}>
+                        <span className="course-list-copy">
+                            <strong>{course.title}</strong>
+                            <span>{course.description || "Open the classroom to view course information and learning materials."}</span>
+                        </span>
+                        <span className="course-list-arrow">Open classroom</span>
+                    </Link>
                 ))}
             </div>
         </div>

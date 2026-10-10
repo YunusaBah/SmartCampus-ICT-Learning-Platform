@@ -21,7 +21,17 @@ const Submission = sequelize.define("Submission", {
 
     fileUrl: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: true
+    },
+
+    fileName: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+
+    answerText: {
+        type: DataTypes.TEXT,
+        allowNull: true
     },
 
     grade: {
@@ -34,6 +44,12 @@ const Submission = sequelize.define("Submission", {
         allowNull: true
     }
 
+}, {
+    indexes: [
+        { fields: ["studentId", "createdAt"] },
+        { fields: ["assignmentId", "createdAt"] },
+        { fields: ["assignmentId", "grade"] }
+    ]
 });
 
 module.exports = Submission;

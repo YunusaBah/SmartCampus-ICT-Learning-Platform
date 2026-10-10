@@ -5,6 +5,7 @@ const dashboardController = require("../controllers/dashboardController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const requireRole = require("../middlewares/roleMiddleware");
 
+router.get("/", authMiddleware, dashboardController.getDashboard);
 router.get("/stats", authMiddleware, dashboardController.getStats);
 
 router.get(

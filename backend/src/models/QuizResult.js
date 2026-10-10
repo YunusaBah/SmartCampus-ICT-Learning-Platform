@@ -29,6 +29,11 @@ const QuizResult = sequelize.define("QuizResult", {
         allowNull: false
     }
 
+}, {
+    indexes: [
+        { fields: ["studentId", "createdAt"] },
+        { fields: ["quizId"] }
+    ]
 });
 
 module.exports = QuizResult;

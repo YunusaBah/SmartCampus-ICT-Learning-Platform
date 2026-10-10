@@ -2,6 +2,7 @@ const { sequelize } = require("../config/db");
 const Quiz = require("../models/Quiz");
 const QuizAssessment = require("../models/QuizAssessment");
 const QuizAttempt = require("../models/QuizAttempt");
+const QuizAttemptAnswer = require("../models/QuizAttemptAnswer");
 const Enrollment = require("../models/Enrollment");
 const User = require("../models/User");
 const getCourseAccess = require("../utils/courseAccess");
@@ -15,17 +16,35 @@ const publicQuestion = (question) => {
     return item;
 };
 
-const calculateScore = (questions, answers) => questions.reduce((score, question) =>
-    score + (answers[String(question.id)] === question.correctAnswer.toUpperCase() ? 1 : 0), 0);
+const numberValue = (value) => Number(value || 0);
 
 const finalizeAttempt = async (attempt, transaction, submittedAt = new Date()) => {
     const questions = await Quiz.findAll({
         where: { assessmentId: attempt.assessmentId },
-        attributes: ["id", "correctAnswer"],
+        attributes: ["id", "correctAnswer", "questionType", "marks"],
         transaction
     });
-    attempt.score = calculateScore(questions, attempt.answers || {});
+    const responses = await QuizAttemptAnswer.findAll({
+        where: { attemptId: attempt.id },
+        transaction
+    });
+    const responseMap = new Map(responses.map((response) => [response.questionId, response]));
+    const totalMarks = questions.reduce((total, question) => total + numberValue(question.marks), 0);
+    let score = 0;
+    let theoryPending = false;
+    for (const question of questions) {
+        if (question.questionType === "THEORY") {
+            const response = responseMap.get(question.id);
+            if (response?.marksAwarded == null) theoryPending = true;
+            else score += numberValue(response.marksAwarded);
+        } else if (attempt.answers?.[String(question.id)] === question.correctAnswer?.toUpperCase()) {
+            score += numberValue(question.marks);
+        }
+    }
+    attempt.score = score;
     attempt.totalQuestions = questions.length;
+    attempt.totalMarks = totalMarks;
+    attempt.theoryPending = theoryPending;
     attempt.submittedAt = submittedAt;
     await attempt.save({ transaction });
     return { questions, attempt };
@@ -36,6 +55,48 @@ const loadAttemptQuestions = async (assessmentId) => Quiz.findAll({
     attributes: { exclude: ["correctAnswer"] },
     order: [["id", "ASC"]]
 });
+
+const loadAttemptAnswers = async (attemptId, transaction) => {
+    const answers = await QuizAttemptAnswer.findAll({ where: { attemptId }, transaction });
+    return Object.fromEntries(answers.map((answer) => [String(answer.questionId), answer.answer]));
+};
+
+const persistAttemptAnswers = async (attempt, answers, transaction) => {
+    const questions = await Quiz.findAll({
+        where: { assessmentId: attempt.assessmentId },
+        attributes: ["id", "questionType", "optionA", "optionB", "optionC", "optionD"],
+        transaction
+    });
+    const questionMap = new Map(questions.map((question) => [String(question.id), question]));
+    const incoming = {};
+    const theoryAnswers = [];
+    for (const [questionId, answer] of Object.entries(answers)) {
+        const question = questionMap.get(questionId);
+        if (!question || typeof answer !== "string") {
+            return { status: 400, message: "Each answer must reference an assessment question and contain text" };
+        }
+        if (question.questionType === "THEORY") {
+            if (answer.length > 20000) return { status: 400, message: "Theory answers cannot exceed 20,000 characters" };
+            theoryAnswers.push({ questionId: question.id, answer });
+        } else {
+            const normalized = answer.toUpperCase();
+            if (!/^[A-D]$/.test(normalized) || !question[`option${normalized}`]) {
+                return { status: 400, message: "Multiple-choice answers must select an available option" };
+            }
+            incoming[questionId] = normalized;
+        }
+    }
+    attempt.answers = { ...(attempt.answers || {}), ...incoming };
+    await attempt.save({ transaction });
+    for (const theoryAnswer of theoryAnswers) {
+        await QuizAttemptAnswer.upsert({
+            attemptId: attempt.id,
+            questionId: theoryAnswer.questionId,
+            answer: theoryAnswer.answer
+        }, { transaction });
+    }
+    return null;
+};
 
 exports.createAssessment = async (req, res) => {
     const { title, instructions, timeLimitMinutes, maxAttempts = 1, courseId, questions } = req.body;
@@ -50,10 +111,26 @@ exports.createAssessment = async (req, res) => {
         if (!question || typeof question !== "object" || Array.isArray(question)) {
             return res.status(400).json({ message: "Each assessment question must be an object" });
         }
-        const options = [question.optionA, question.optionB, question.optionC, question.optionD];
-        if (!validText(question.question) || options.some((option) => !validText(option)) ||
-            typeof question.correctAnswer !== "string" || !/^[A-D]$/i.test(question.correctAnswer)) {
-            return res.status(400).json({ message: "Each question requires a prompt, four options, and a correct answer" });
+        if (question.questionType != null && !["MCQ", "THEORY"].includes(question.questionType)) {
+            return res.status(400).json({ message: "Question type must be MCQ or THEORY" });
+        }
+        const questionType = question.questionType === "THEORY" ? "THEORY" : "MCQ";
+        const marks = question.marks == null ? 1 : Number(question.marks);
+        if (!validText(question.question) || !Number.isFinite(marks) || marks <= 0 || marks > 10000) {
+            return res.status(400).json({ message: "Each question requires text and positive marks" });
+        }
+        if (questionType === "MCQ") {
+            const options = ["A", "B", "C", "D"]
+                .map((letter) => [letter, question[`option${letter}`]])
+                .filter(([, option]) => validText(option));
+            if (options.some(([, option]) => option.trim().length > 255)) {
+                return res.status(400).json({ message: "Answer options cannot exceed 255 characters" });
+            }
+            if (options.length < 2 || typeof question.correctAnswer !== "string" ||
+                !/^[A-D]$/i.test(question.correctAnswer) ||
+                !options.some(([letter]) => letter === question.correctAnswer.toUpperCase())) {
+                return res.status(400).json({ message: "Each multiple-choice question requires at least two options and a correct answer" });
+            }
         }
     }
     const access = await getCourseAccess(courseId, req.user);
@@ -70,11 +147,13 @@ exports.createAssessment = async (req, res) => {
         }, { transaction });
         await Quiz.bulkCreate(questions.map((question) => ({
             question: question.question.trim(),
-            optionA: question.optionA.trim(),
-            optionB: question.optionB.trim(),
-            optionC: question.optionC.trim(),
-            optionD: question.optionD.trim(),
-            correctAnswer: question.correctAnswer.toUpperCase(),
+            optionA: validText(question.optionA) ? question.optionA.trim() : null,
+            optionB: validText(question.optionB) ? question.optionB.trim() : null,
+            optionC: validText(question.optionC) ? question.optionC.trim() : null,
+            optionD: validText(question.optionD) ? question.optionD.trim() : null,
+            correctAnswer: question.questionType === "THEORY" ? null : question.correctAnswer.toUpperCase(),
+            questionType: question.questionType === "THEORY" ? "THEORY" : "MCQ",
+            marks: question.marks == null ? 1 : Number(question.marks),
             courseId: access.course.id,
             assessmentId: assessment.id
         })), { transaction, returning: true });
@@ -139,7 +218,78 @@ exports.listAssessmentAttempts = async (req, res) => {
         include: [{ model: User, as: "student", attributes: ["id", "fullName"] }],
         order: [["startedAt", "DESC"]]
     });
-    res.json(attempts);
+    const attemptIds = attempts.map((attempt) => attempt.id);
+    const [responses, questions] = await Promise.all([
+        QuizAttemptAnswer.findAll({ where: { attemptId: attemptIds.length ? attemptIds : [-1] } }),
+        Quiz.findAll({
+            where: { assessmentId: assessment.id },
+            attributes: ["id", "question", "questionType", "marks", "optionA", "optionB", "optionC", "optionD"],
+            order: [["id", "ASC"]]
+        })
+    ]);
+    const responseMap = new Map(responses.map((response) => [`${response.attemptId}:${response.questionId}`, response]));
+    res.json(attempts.map((attempt) => ({
+        ...attempt.toJSON(),
+        responses: questions.filter((question) => question.questionType === "THEORY")
+            .map((question) => ({
+                question: question.toJSON(),
+                response: responseMap.get(`${attempt.id}:${question.id}`)?.toJSON() || null
+            }))
+    })));
+};
+
+exports.gradeTheoryAnswer = async (req, res) => {
+    if (!validId(req.params.attemptId) || !validId(req.params.questionId)) {
+        return res.status(400).json({ message: "Invalid attempt or question ID" });
+    }
+    const marksAwarded = Number(req.body.marksAwarded);
+    if (req.body.marksAwarded == null || req.body.marksAwarded === "" ||
+        !Number.isFinite(marksAwarded) || marksAwarded < 0 ||
+        (req.body.feedback != null && typeof req.body.feedback !== "string")) {
+        return res.status(400).json({ message: "Enter valid marks and feedback" });
+    }
+    const attempt = await QuizAttempt.findByPk(req.params.attemptId);
+    if (!attempt || attempt.submittedAt == null) return res.status(404).json({ message: "Submitted attempt not found" });
+    const assessment = await QuizAssessment.findByPk(attempt.assessmentId);
+    if (!assessment) return res.status(404).json({ message: "Assessment not found" });
+    const access = await getCourseAccess(assessment.courseId, req.user);
+    if (access.status) return res.status(access.status).json({ message: access.message });
+    if (!access.isManager) return res.status(403).json({ message: "Only course managers can grade theory answers" });
+
+    const question = await Quiz.findOne({
+        where: { id: req.params.questionId, assessmentId: assessment.id, questionType: "THEORY" }
+    });
+    if (!question) return res.status(404).json({ message: "Theory question not found" });
+    if (marksAwarded > numberValue(question.marks)) {
+        return res.status(400).json({ message: "Marks awarded cannot exceed the available marks" });
+    }
+
+    const result = await sequelize.transaction(async (transaction) => {
+        const lockedAttempt = await QuizAttempt.findByPk(attempt.id, {
+            transaction,
+            lock: transaction.LOCK.UPDATE
+        });
+        if (!lockedAttempt || !lockedAttempt.submittedAt) return { status: 404 };
+        let response = await QuizAttemptAnswer.findOne({
+            where: { attemptId: lockedAttempt.id, questionId: question.id },
+            transaction,
+            lock: transaction.LOCK.UPDATE
+        });
+        if (!response) {
+            response = await QuizAttemptAnswer.create({
+                attemptId: lockedAttempt.id,
+                questionId: question.id,
+                answer: ""
+            }, { transaction });
+        }
+        response.marksAwarded = marksAwarded;
+        response.feedback = req.body.feedback?.trim() || null;
+        await response.save({ transaction });
+        const finalized = await finalizeAttempt(lockedAttempt, transaction);
+        return { response, attempt: finalized.attempt };
+    });
+    if (result.status) return res.status(result.status).json({ message: "Submitted attempt not found" });
+    res.json({ message: "Theory answer graded", response: result.response, attempt: result.attempt });
 };
 
 exports.startAttempt = async (req, res) => {
@@ -188,7 +338,8 @@ exports.startAttempt = async (req, res) => {
     if (outcome.status) return res.status(outcome.status).json({ message: outcome.message });
     res.status(outcome.resumed ? 200 : 201).json({
         attempt: outcome.attempt,
-        questions: await loadAttemptQuestions(assessment.id)
+        questions: await loadAttemptQuestions(assessment.id),
+        answers: await loadAttemptAnswers(outcome.attempt.id)
     });
 };
 
@@ -212,20 +363,8 @@ exports.saveAnswers = async (req, res) => {
             return { status: 409, message: "The assessment deadline has passed", attempt };
         }
 
-        const questionIds = new Set((await Quiz.findAll({
-            where: { assessmentId: attempt.assessmentId },
-            attributes: ["id"],
-            transaction
-        })).map((question) => String(question.id)));
-        const incoming = {};
-        for (const [questionId, answer] of Object.entries(req.body.answers)) {
-            if (!questionIds.has(questionId) || typeof answer !== "string" || !/^[A-D]$/i.test(answer)) {
-                return { status: 400, message: "Each answer must reference an assessment question and use A, B, C, or D" };
-            }
-            incoming[questionId] = answer.toUpperCase();
-        }
-        attempt.answers = { ...(attempt.answers || {}), ...incoming };
-        await attempt.save({ transaction });
+        const answerError = await persistAttemptAnswers(attempt, req.body.answers, transaction);
+        if (answerError) return answerError;
         return { attempt };
     });
     if (result.status) {
@@ -240,6 +379,10 @@ exports.saveAnswers = async (req, res) => {
 exports.submitAttempt = async (req, res) => {
     if (req.user.role !== "student") return res.status(403).json({ message: "Student access required" });
     if (!validId(req.params.attemptId)) return res.status(400).json({ message: "Invalid attempt ID" });
+    if (req.body.answers != null &&
+        (typeof req.body.answers !== "object" || Array.isArray(req.body.answers))) {
+        return res.status(400).json({ message: "Answers must be an object keyed by question ID" });
+    }
     const attemptId = Number(req.params.attemptId);
     const result = await sequelize.transaction(async (transaction) => {
         const attempt = await QuizAttempt.findByPk(attemptId, {
@@ -253,6 +396,10 @@ exports.submitAttempt = async (req, res) => {
             await finalizeAttempt(attempt, transaction, attempt.deadlineAt);
             return { status: 409, message: "The assessment deadline has passed", attempt };
         }
+        if (req.body.answers) {
+            const answerError = await persistAttemptAnswers(attempt, req.body.answers, transaction);
+            if (answerError) return answerError;
+        }
         const finalized = await finalizeAttempt(attempt, transaction);
         return { attempt: finalized.attempt, questions: finalized.questions };
     });
@@ -260,7 +407,7 @@ exports.submitAttempt = async (req, res) => {
     res.json({
         message: "Assessment submitted",
         attempt: result.attempt,
-        results: result.questions.map((question) => ({
+        results: result.questions.filter((question) => question.questionType !== "THEORY").map((question) => ({
             questionId: question.id,
             selectedAnswer: result.attempt.answers[String(question.id)] || null,
             correctAnswer: question.correctAnswer,
@@ -290,16 +437,21 @@ exports.getMyAttempt = async (req, res) => {
         if (!attempt) return res.status(404).json({ message: "No assessment attempt found" });
         const questions = await Quiz.findAll({
             where: { assessmentId: assessment.id },
-            attributes: ["id", "correctAnswer"],
+            attributes: ["id", "correctAnswer", "questionType"],
             order: [["id", "ASC"]]
         });
+        const theoryAnswers = await loadAttemptAnswers(attempt.id);
         return res.json({
             attempt,
             questions: questions.map((question) => ({
                 id: question.id,
                 selectedAnswer: attempt.answers[String(question.id)] || null,
-                correctAnswer: question.correctAnswer,
-                correct: attempt.answers[String(question.id)] === question.correctAnswer.toUpperCase()
+                studentAnswer: theoryAnswers[String(question.id)] || "",
+                questionType: question.questionType,
+                ...(question.questionType === "THEORY" ? {} : {
+                    correctAnswer: question.correctAnswer,
+                    correct: attempt.answers[String(question.id)] === question.correctAnswer?.toUpperCase()
+                })
             }))
         });
     }
@@ -314,5 +466,9 @@ exports.getMyAttempt = async (req, res) => {
         });
         return res.status(409).json({ message: "The assessment deadline has passed", attempt: completed });
     }
-    res.json({ attempt, questions: await loadAttemptQuestions(assessment.id) });
+    res.json({
+        attempt,
+        questions: await loadAttemptQuestions(assessment.id),
+        answers: await loadAttemptAnswers(attempt.id)
+    });
 };

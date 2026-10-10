@@ -7,10 +7,14 @@ const app = require("./app");
 const { sequelize, connectDB } = require("./config/db");
 require("./models/associations");
 const runMigrations = require("./utils/runMigrations");
+const sendDeadlineReminders = require("./utils/deadlineReminders");
 
-const uploadsDir = path.join(__dirname, "../uploads");
+const uploadsDir = require("./utils/uploadsDirectory");
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
+}
+if (process.env.NODE_ENV === "production" && !process.env.UPLOADS_DIR) {
+    console.warn("UPLOADS_DIR is unset; uploaded course and submission files are on ephemeral local storage.");
 }
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
@@ -36,6 +40,14 @@ const startServer = async () => {
         app.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);
         });
+        const runReminderSweep = () => {
+            sendDeadlineReminders().catch((error) => {
+                console.error("Deadline reminder sweep failed:", error.message);
+            });
+        };
+        runReminderSweep();
+        const reminderTimer = setInterval(runReminderSweep, 15 * 60 * 1000);
+        reminderTimer.unref();
     } catch (error) {
         console.error("Failed to start server:", error.message);
         process.exit(1);

@@ -3,7 +3,6 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
-const path = require("path");
 require("./config/env");
 
 const authRoutes = require("./Routes/authRoutes");
@@ -12,9 +11,12 @@ const lessonRoutes = require("./Routes/lessonRoutes");
 const quizRoutes = require("./Routes/quizRoutes");
 const assignmentRoutes = require("./Routes/assignmentRoutes");
 const courseRoutes = require("./Routes/courseRoutes");
+const downloadRoutes = require("./Routes/downloadRoutes");
+const auditRoutes = require("./Routes/auditRoutes");
 const dashboardRoutes = require("./Routes/dashboardRoutes");
 const aiRoutes = require("./Routes/aiRoutes");
 const lmsRoutes = require("./Routes/lmsRoutes");
+const { sequelize } = require("./config/db");
 
 const app = express();
 
@@ -48,7 +50,8 @@ app.use(cors({
 
         callback(null, false);
     },
-    credentials: true
+    credentials: true,
+    exposedHeaders: ["Content-Disposition"]
 }));
 app.use(express.json({ limit: "1mb" }));
 app.use((req, res, next) => {
@@ -62,10 +65,18 @@ app.use((req, res, next) => {
 app.use(morgan("dev"));
 app.use(limiter);
 
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
-
-app.get("/health", (req, res) => {
+app.get("/health/live", (req, res) => {
     res.json({ status: "ok" });
+});
+
+app.get("/health", async (req, res) => {
+    try {
+        await sequelize.authenticate();
+        res.json({ status: "ok", database: "connected" });
+    } catch (error) {
+        console.error("Readiness check failed:", error.message);
+        res.status(503).json({ status: "unavailable", database: "disconnected" });
+    }
 });
 
 app.get("/", (req, res) => {
@@ -76,6 +87,8 @@ app.get("/", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/courses", courseRoutes);
+app.use("/api/downloads", downloadRoutes);
+app.use("/api/audit", auditRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/lessons", lessonRoutes);
 app.use("/api/quizzes", quizRoutes);

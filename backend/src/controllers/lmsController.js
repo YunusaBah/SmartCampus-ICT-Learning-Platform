@@ -7,9 +7,12 @@ const Lesson = require("../models/Lesson");
 const Module = require("../models/Module");
 const LessonProgress = require("../models/LessonProgress");
 const Announcement = require("../models/Announcement");
+const AnnouncementReaction = require("../models/AnnouncementReaction");
+const AnnouncementView = require("../models/AnnouncementView");
 const Message = require("../models/Message");
 const Notification = require("../models/Notification");
 const CalendarEvent = require("../models/CalendarEvent");
+const QuizAssessment = require("../models/QuizAssessment");
 const Department = require("../models/Department");
 const Certificate = require("../models/Certificate");
 const User = require("../models/User");
@@ -23,6 +26,7 @@ const idValue = (value) => {
 
 const nonEmpty = (value, max = 255) =>
     typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
+const announcementEmojis = new Set(["👍", "❤️", "🎉", "👏", "😊", "🙌", "💯", "✅", "🤩", "🚀"]);
 
 const accessResponse = (res, access) =>
     access.status ? res.status(access.status).json({ message: access.message }) : null;
@@ -215,7 +219,7 @@ exports.listAnnouncements = async (req, res) => {
     if (access.status) return res.status(access.status).json({ message: access.message });
     res.json(await Announcement.findAll({
         where: { courseId: access.course.id },
-        include: [{ model: User, as: "author", attributes: ["id", "fullName"] }],
+        include: [{ model: User, as: "author", attributes: ["id", "fullName", "role"] }],
         order: [["createdAt", "DESC"]]
     }));
 };
@@ -230,7 +234,7 @@ exports.listMyAnnouncements = async (req, res) => {
     const announcements = await Announcement.findAll({
         where: { courseId: { [Op.in]: courseIds } },
         include: [
-            { model: User, as: "author", attributes: ["id", "fullName"] },
+            { model: User, as: "author", attributes: ["id", "fullName", "role"] },
             { model: Course, as: "course", attributes: ["id", "title"] }
         ],
         order: [["createdAt", "DESC"]]
@@ -242,12 +246,13 @@ exports.listMyAnnouncements = async (req, res) => {
     })));
 };
 
-const publishAnnouncement = async ({ course, title, body, authorId, transaction }) => {
+const publishAnnouncement = async ({ course, title, body, authorId, authorRoleName = null, transaction }) => {
     const announcement = await Announcement.create({
         title: title.trim(),
         body: body.trim(),
         courseId: course.id,
-        createdById: authorId
+        createdById: authorId,
+        authorRoleName
     }, { transaction });
     await createNotifications({
         courseId: course.id,
@@ -264,6 +269,13 @@ const publishAnnouncement = async ({ course, title, body, authorId, transaction 
 exports.createAnnouncement = async (req, res) => {
     const access = await courseParticipant(req.params.courseId, req.user);
     if (access.status) return res.status(access.status).json({ message: access.message });
+    if (!access.isManager && !access.enrollment?.canPostAnnouncements) {
+        return res.status(403).json({ message: "Your lecturer has not granted announcement posting permission for this course" });
+    }
+    const authorRoleName = access.isManager ? null : access.enrollment.announcementRoleName;
+    if (!access.isManager && !nonEmpty(authorRoleName, 80)) {
+        return res.status(403).json({ message: "Your lecturer must assign you an announcement role before you can post" });
+    }
     const { title, body } = req.body;
     if (!nonEmpty(title) || !nonEmpty(body, 20000)) {
         return res.status(400).json({ message: "Announcement title and body are required" });
@@ -274,10 +286,96 @@ exports.createAnnouncement = async (req, res) => {
             title,
             body,
             authorId: req.user.id,
+            authorRoleName,
             transaction
         })
     );
     res.status(201).json(announcement);
+};
+
+const announcementParticipant = async (announcementId, user) => {
+    const announcement = await Announcement.findByPk(announcementId);
+    if (!announcement) return { status: 404, message: "Announcement not found" };
+    const access = await courseParticipant(announcement.courseId, user);
+    if (access.status) return access;
+    return { announcement, access };
+};
+
+exports.markAnnouncementViewed = async (req, res) => {
+    const result = await announcementParticipant(req.params.id, req.user);
+    if (result.status) return res.status(result.status).json({ message: result.message });
+    if (req.user.role !== "student") return res.status(403).json({ message: "Student access required" });
+    const [view] = await AnnouncementView.findOrCreate({
+        where: { announcementId: result.announcement.id, userId: req.user.id },
+        defaults: { announcementId: result.announcement.id, userId: req.user.id }
+    });
+    res.json({ viewedAt: view.viewedAt });
+};
+
+exports.setAnnouncementReaction = async (req, res) => {
+    const result = await announcementParticipant(req.params.id, req.user);
+    if (result.status) return res.status(result.status).json({ message: result.message });
+    const { emoji } = req.body;
+    if (typeof emoji !== "string" || !announcementEmojis.has(emoji)) {
+        return res.status(400).json({ message: "Choose one of the available positive reactions" });
+    }
+    const where = { announcementId: result.announcement.id, userId: req.user.id };
+    const current = await AnnouncementReaction.findOne({ where });
+    if (current?.emoji === emoji) {
+        await current.destroy();
+        return res.json({ reaction: null });
+    }
+    if (current) {
+        current.emoji = emoji;
+        await current.save();
+        return res.json({ reaction: current });
+    }
+    const reaction = await AnnouncementReaction.create({ ...where, emoji });
+    res.json({ reaction });
+};
+
+exports.getAnnouncementActivity = async (req, res) => {
+    const result = await announcementParticipant(req.params.id, req.user);
+    if (result.status) return res.status(result.status).json({ message: result.message });
+    const [views, reactions] = await Promise.all([
+        AnnouncementView.findAll({
+            where: { announcementId: result.announcement.id },
+            include: [{ model: User, as: "user", attributes: ["id", "fullName"] }],
+            order: [["viewedAt", "ASC"]]
+        }),
+        AnnouncementReaction.findAll({
+            where: { announcementId: result.announcement.id },
+            include: [{ model: User, as: "user", attributes: ["id", "fullName"] }],
+            order: [["createdAt", "ASC"]]
+        })
+    ]);
+    const enrollments = await Enrollment.findAll({
+        where: {
+            courseId: result.announcement.courseId,
+            studentId: { [Op.in]: [...new Set(views.map((view) => view.userId))] }
+        },
+        attributes: ["studentId", "announcementRoleName"]
+    });
+    const rolesByStudent = new Map(enrollments.map((enrollment) => [
+        enrollment.studentId, enrollment.announcementRoleName
+    ]));
+    const grouped = new Map();
+    for (const reaction of reactions) {
+        if (!grouped.has(reaction.emoji)) grouped.set(reaction.emoji, []);
+        grouped.get(reaction.emoji).push({
+            id: reaction.user?.id,
+            fullName: reaction.user?.fullName || "Course member"
+        });
+    }
+    res.json({
+        viewers: views.filter((view) => view.user).map((view) => ({
+            id: view.user.id,
+            fullName: view.user.fullName,
+            roleName: rolesByStudent.get(view.userId) || null,
+            viewedAt: view.viewedAt
+        })),
+        reactions: [...grouped].map(([emoji, users]) => ({ emoji, users }))
+    });
 };
 
 exports.broadcastAnnouncement = async (req, res) => {
@@ -328,7 +426,13 @@ exports.deleteAnnouncement = async (req, res) => {
     if (!announcement) return res.status(404).json({ message: "Announcement not found" });
     const access = await managerAccess(announcement.courseId, req.user, res);
     if (!access) return;
-    await announcement.destroy();
+    await sequelize.transaction(async (transaction) => {
+        await Promise.all([
+            AnnouncementReaction.destroy({ where: { announcementId: announcement.id }, transaction }),
+            AnnouncementView.destroy({ where: { announcementId: announcement.id }, transaction })
+        ]);
+        await announcement.destroy({ transaction });
+    });
     res.json({ message: "Announcement deleted" });
 };
 
@@ -546,17 +650,20 @@ exports.listMyCalendar = async (req, res) => {
             startsAt: event.startsAt,
             endsAt: event.endsAt,
             courseId: event.courseId,
-            courseTitle: courseTitles.get(event.courseId)
+            courseTitle: courseTitles.get(event.courseId),
+            assessmentId: event.assessmentId
         })),
         ...assignments.map((assignment) => ({
             id: `assignment-${assignment.id}`,
             type: "assignment",
+            assignmentId: assignment.id,
             title: assignment.title,
             description: assignment.description,
             startsAt: assignment.dueDate,
             endsAt: assignment.dueDate,
             courseId: assignment.courseId,
-            courseTitle: courseTitles.get(assignment.courseId)
+            courseTitle: courseTitles.get(assignment.courseId),
+            canReschedule: req.user.role === "lecturer"
         }))
     ];
     agenda.sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
@@ -573,7 +680,14 @@ exports.createCalendarEvent = async (req, res) => {
     const access = await managerAccess(req.params.courseId, req.user, res);
     if (!access) return;
     const { title, description, startsAt, endsAt, eventType = "event" } = req.body;
-    const validTypes = ["event", "class", "exam", "deadline", "other"];
+    const validTypes = ["event", "class", "exam", "deadline", "assessment", "quiz", "other"];
+    let assessment = null;
+    if (["assessment", "quiz"].includes(eventType)) {
+        assessment = await QuizAssessment.findOne({
+            where: { id: idValue(req.body.assessmentId), courseId: access.course.id }
+        });
+        if (!assessment) return res.status(400).json({ message: "Select a timed assessment from this course" });
+    }
     if (!nonEmpty(title) || !validEventTimes(startsAt, endsAt) ||
         !validTypes.includes(eventType) ||
         (description != null && typeof description !== "string")) {
@@ -582,7 +696,8 @@ exports.createCalendarEvent = async (req, res) => {
     const event = await sequelize.transaction(async (transaction) => {
         const created = await CalendarEvent.create({
             courseId: access.course.id, createdById: req.user.id, eventType, title: title.trim(),
-            description: description?.trim() || null, startsAt: new Date(startsAt), endsAt: new Date(endsAt)
+            description: description?.trim() || null, startsAt: new Date(startsAt), endsAt: new Date(endsAt),
+            assessmentId: assessment?.id || null
         }, { transaction });
         await createNotifications({
             courseId: access.course.id,
@@ -605,12 +720,18 @@ exports.updateCalendarEvent = async (req, res) => {
     if (!access) return;
     const startsAt = req.body.startsAt ?? event.startsAt;
     const endsAt = req.body.endsAt ?? event.endsAt;
-    const validTypes = ["event", "class", "exam", "deadline", "other"];
+    const validTypes = ["event", "class", "exam", "deadline", "assessment", "quiz", "other"];
     if (!validEventTimes(startsAt, endsAt) ||
         (req.body.eventType !== undefined && !validTypes.includes(req.body.eventType)) ||
         (req.body.title !== undefined && !nonEmpty(req.body.title)) ||
         (req.body.description !== undefined && req.body.description !== null && typeof req.body.description !== "string")) {
         return res.status(400).json({ message: "Invalid calendar event details" });
+    }
+    if (["assessment", "quiz"].includes(req.body.eventType ?? event.eventType)) {
+        const assessment = await QuizAssessment.findOne({
+            where: { id: event.assessmentId, courseId: event.courseId }
+        });
+        if (!assessment) return res.status(400).json({ message: "This calendar item must be linked to an assessment in its course" });
     }
     if (req.body.title !== undefined) event.title = req.body.title.trim();
     if (req.body.eventType !== undefined) event.eventType = req.body.eventType;

@@ -13,7 +13,10 @@ router.delete("/modules/:id", requireRole("lecturer"), lmsController.deleteModul
 router.get("/courses/:courseId/progress", lmsController.getCourseProgress);
 
 router.get("/courses/:courseId/announcements", lmsController.listAnnouncements);
-router.post("/courses/:courseId/announcements", requireRole("student", "lecturer"), lmsController.createAnnouncement);
+router.post("/courses/:courseId/announcements", lmsController.createAnnouncement);
+router.post("/announcements/:id/view", requireRole("student"), lmsController.markAnnouncementViewed);
+router.get("/announcements/:id/activity", lmsController.getAnnouncementActivity);
+router.put("/announcements/:id/reaction", lmsController.setAnnouncementReaction);
 router.patch("/announcements/:id", requireRole("lecturer"), lmsController.updateAnnouncement);
 router.delete("/announcements/:id", requireRole("lecturer"), lmsController.deleteAnnouncement);
 router.get("/announcements/my", requireRole("student"), lmsController.listMyAnnouncements);

@@ -4,6 +4,8 @@ Deploy **MySQL** on Railway, the **API** on Render, and the **React frontend** o
 
 > **Important:** Render’s free tier has no persistent disk. Uploaded lesson/assignment files are stored on the server filesystem and **may be lost** when the service restarts or redeploys. Fine for demos and grading.
 
+For production, use durable private object storage for uploads and configure password-reset delivery. Follow [`BACKUP-RECOVERY.md`](BACKUP-RECOVERY.md) for the required backup and restore procedure.
+
 ---
 
 ## What you need before starting
@@ -65,13 +67,17 @@ Render needs your code from a Git repository. **You control when and what you pu
 | `JWT_SECRET` | Your long random secret |
 | `GOOGLE_CLIENT_ID` | Your Google OAuth Web client ID |
 | `CLIENT_URL` | Leave blank for now — set after Step 3 |
+| `PASSWORD_RESET_DELIVERY_URL` | HTTPS webhook URL for your trusted email/reset-link delivery service |
+| `PASSWORD_RESET_DELIVERY_SECRET` | Random secret of at least 32 characters shared with that delivery service |
+| `PASSWORD_RESET_PAGE_URL` | HTTPS frontend login URL that handles reset links |
+| `UPLOADS_DIR` | Path to a durable persistent disk mounted by the backend service |
 | `ANTHROPIC_API_KEY` | Your Anthropic key |
 
 `NODE_ENV=production` and `DB_SSL=true` are already set in `render.yaml`.
 
 6. Click **Manual Deploy** → **Deploy latest commit** (or wait for auto-deploy).
 7. When deploy finishes, open the service URL (e.g. `https://smartcampus-api.onrender.com`).
-8. Test: visit `https://YOUR-RENDER-URL/health` — you should see `{"status":"ok"}`.
+8. Test: visit `https://YOUR-RENDER-URL/health` — you should see `{"status":"ok","database":"connected"}`.
 
 ### Option B — New Web Service (without Blueprint)
 
@@ -195,7 +201,8 @@ https://smartcampus-utg-gambia.netlify.app,https://deploy-preview-123--smartcamp
 
 | Check | How |
 |-------|-----|
-| API health | `https://YOUR-RENDER-URL/health` → `{"status":"ok"}` |
+| API readiness | `https://YOUR-RENDER-URL/health` → `{"status":"ok","database":"connected"}` |
+| API liveness | `https://YOUR-RENDER-URL/health/live` → `{"status":"ok"}` |
 | API root | `https://YOUR-RENDER-URL/` → welcome JSON |
 | Frontend loads | Netlify URL opens login page |
 | Login works | Use a legacy seed account or create a verified Google account |
@@ -231,7 +238,7 @@ Vite bakes this in at **build time**. After changing it on Netlify, trigger a **
 
 ### CORS / “Network Error” in the browser
 
-- First open `https://YOUR-RENDER-URL/health`. The SmartCampus Node API must return `{"status":"ok"}`. If it returns a 404, a different server response, or a `uvicorn` server header, the URL is not serving this project's backend. In Render, deploy this repository's root `render.yaml` Blueprint, or create a Node Web Service with root directory `backend`, build command `npm install`, and start command `npm start`.
+- First open `https://YOUR-RENDER-URL/health`. The SmartCampus Node API must return `{"status":"ok","database":"connected"}`. A 503 indicates the API cannot reach its database. If it returns a 404, a different server response, or a `uvicorn` server header, the URL is not serving this project's backend. In Render, deploy this repository's root `render.yaml` Blueprint, or create a Node Web Service with root directory `backend`, build command `npm install`, and start command `npm start`.
 - `CLIENT_URL` on Render should exactly match your Netlify URL (including `https://`, no trailing slash). The current production Netlify URL is allowed by default; set this variable for additional URLs or previews.
 - Redeploy the backend after changing `CLIENT_URL`.
 - If the correct backend is deployed at a different URL, update Netlify's `VITE_API_URL` to that API origin and redeploy the frontend.

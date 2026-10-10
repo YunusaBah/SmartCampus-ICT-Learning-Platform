@@ -1,15 +1,29 @@
 const Lesson = require("../models/Lesson");
 const Course = require("../models/Course");
+const User = require("../models/User");
 const getCourseAccess = require("../utils/courseAccess");
 const discardUpload = require("../utils/discardUpload");
 const Module = require("../models/Module");
+const LessonProgress = require("../models/LessonProgress");
+const { sequelize } = require("../config/db");
+const fs = require("fs/promises");
+const path = require("path");
+const uploadsDirectory = require("../utils/uploadsDirectory");
+const validateMaterialFile = require("../utils/validateMaterialFile");
+
+const toMaterialResponse = (lesson) => {
+    const data = lesson.toJSON();
+    data.hasFile = Boolean(data.fileUrl);
+    delete data.fileUrl;
+    return data;
+};
 
 exports.createLesson = async (req, res) => {
     try {
         const { title, content, videoUrl, courseId, moduleId, orderIndex } = req.body;
 
         if (typeof title !== "string" || !title.trim() ||
-            typeof content !== "string" || !content.trim() ||
+            (typeof content !== "string" || !content.trim()) && !req.file ||
             !Number.isSafeInteger(Number(courseId)) || Number(courseId) <= 0 ||
             (orderIndex !== undefined && (!Number.isInteger(orderIndex) || orderIndex < 0))) {
             await discardUpload(req.file);
@@ -24,6 +38,14 @@ exports.createLesson = async (req, res) => {
         if (course.lecturerId !== req.user.id) {
             await discardUpload(req.file);
             return res.status(403).json({ message: "You can only add lessons to your courses" });
+        }
+        if (typeof title !== "string" || title.trim().length > 255 ||
+            (content !== undefined && typeof content !== "string") ||
+            (req.body.description !== undefined && typeof req.body.description !== "string") ||
+            (typeof content === "string" && content.trim().length > 60000) ||
+            (typeof req.body.description === "string" && req.body.description.trim().length > 10000)) {
+            await discardUpload(req.file);
+            return res.status(400).json({ message: "Material title, content, or description exceeds the allowed length" });
         }
         let validModuleId = null;
         if (moduleId !== undefined && moduleId !== null) {
@@ -42,25 +64,149 @@ exports.createLesson = async (req, res) => {
             validModuleId = module.id;
         }
 
+        const fileMetadata = req.file ? await validateMaterialFile(req.file) : null;
         const lesson = await Lesson.create({
             title: title.trim(),
-            content: content.trim(),
+            content: typeof content === "string" ? content.trim() : "",
+            description: typeof req.body.description === "string" ? req.body.description.trim() || null : null,
             videoUrl: typeof videoUrl === "string" && videoUrl.trim() ? videoUrl.trim() : null,
             courseId: course.id,
             moduleId: validModuleId,
             orderIndex: orderIndex ?? 0,
-            fileUrl: req.file ? `/uploads/${req.file.filename}` : null
+            fileUrl: req.file ? `/uploads/${req.file.filename}` : null,
+            fileName: req.file ? path.basename(req.file.originalname) : null,
+            mimeType: fileMetadata?.mimeType || null,
+            fileSize: fileMetadata?.fileSize || null,
+            uploadedById: req.user.id
         });
 
         res.status(201).json({
             message: "Lesson created successfully",
-            lesson
+            lesson: toMaterialResponse(lesson)
         });
 
     } catch (error) {
         await discardUpload(req.file);
+        if (error.message === "File contents do not match a supported material file type") {
+            return res.status(400).json({ message: error.message });
+        }
         console.error("Failed to create lesson:", error);
         res.status(500).json({ message: "Failed to create lesson" });
+    }
+};
+
+exports.updateLesson = async (req, res) => {
+    let previousFileUrl;
+    try {
+        const lesson = await Lesson.findByPk(req.params.id);
+        if (!lesson) {
+            await discardUpload(req.file);
+            return res.status(404).json({ message: "Course material not found" });
+        }
+        const course = await Course.findByPk(lesson.courseId);
+        if (!course || course.lecturerId !== req.user.id) {
+            await discardUpload(req.file);
+            return res.status(404).json({ message: "Course material not found" });
+        }
+        const updates = {};
+        if (req.body.title !== undefined) {
+            if (typeof req.body.title !== "string" || !req.body.title.trim() || req.body.title.trim().length > 255) {
+                await discardUpload(req.file);
+                return res.status(400).json({ message: "Material title is required and must be at most 255 characters" });
+            }
+            updates.title = req.body.title.trim();
+        }
+        if (req.body.description !== undefined) {
+            if (typeof req.body.description !== "string" || req.body.description.trim().length > 10000) {
+                await discardUpload(req.file);
+                return res.status(400).json({ message: "Material description must be at most 10000 characters" });
+            }
+            updates.description = req.body.description.trim() || null;
+        }
+        if (req.body.content !== undefined) {
+            if (typeof req.body.content !== "string" || req.body.content.trim().length > 60000 ||
+                (!req.body.content.trim() && !req.file && !lesson.fileUrl)) {
+                await discardUpload(req.file);
+                return res.status(400).json({ message: "Written content or a material file is required" });
+            }
+            updates.content = req.body.content.trim();
+        }
+        if (req.body.videoUrl !== undefined) {
+            if (typeof req.body.videoUrl !== "string") {
+                await discardUpload(req.file);
+                return res.status(400).json({ message: "Video URL must be text" });
+            }
+            updates.videoUrl = req.body.videoUrl.trim() || null;
+        }
+        if (req.body.moduleId !== undefined) {
+            const moduleId = req.body.moduleId === "" ? null : Number(req.body.moduleId);
+            if (moduleId !== null && (!Number.isSafeInteger(moduleId) || moduleId <= 0 ||
+                !await Module.findOne({ where: { id: moduleId, courseId: course.id } }))) {
+                await discardUpload(req.file);
+                return res.status(400).json({ message: "Module must belong to the lesson course" });
+            }
+            updates.moduleId = moduleId;
+        }
+        if (req.file) {
+            const fileMetadata = await validateMaterialFile(req.file);
+            previousFileUrl = lesson.fileUrl;
+            updates.fileUrl = `/uploads/${req.file.filename}`;
+            updates.fileName = path.basename(req.file.originalname);
+            updates.mimeType = fileMetadata.mimeType;
+            updates.fileSize = fileMetadata.fileSize;
+            updates.uploadedById = req.user.id;
+        }
+        if (!Object.keys(updates).length) {
+            await discardUpload(req.file);
+            return res.status(400).json({ message: "At least one material field must be provided" });
+        }
+        await lesson.update(updates);
+        if (previousFileUrl) {
+            try {
+                await removeMaterialFile(previousFileUrl);
+            } catch (cleanupError) {
+                console.error("Failed to remove replaced material file:", cleanupError);
+            }
+        }
+        return res.json({ message: "Course material updated successfully", lesson: toMaterialResponse(lesson) });
+    } catch (error) {
+        await discardUpload(req.file);
+        if (error.message === "File contents do not match a supported material file type") {
+            return res.status(400).json({ message: error.message });
+        }
+        console.error("Failed to update course material:", error);
+        return res.status(500).json({ message: "Failed to update course material" });
+    }
+};
+
+exports.deleteLesson = async (req, res) => {
+    try {
+        const lesson = await Lesson.findByPk(req.params.id);
+        if (!lesson) return res.status(404).json({ message: "Course material not found" });
+        const course = await Course.findByPk(lesson.courseId);
+        if (!course || course.lecturerId !== req.user.id) {
+            return res.status(404).json({ message: "Course material not found" });
+        }
+        const fileUrl = lesson.fileUrl;
+        await sequelize.transaction(async (transaction) => {
+            await LessonProgress.destroy({ where: { lessonId: lesson.id }, transaction });
+            await lesson.destroy({ transaction });
+        });
+        if (fileUrl) await removeMaterialFile(fileUrl);
+        return res.json({ message: "Course material deleted successfully" });
+    } catch (error) {
+        console.error("Failed to delete course material:", error);
+        return res.status(500).json({ message: "Failed to delete course material" });
+    }
+};
+
+const removeMaterialFile = async (fileUrl) => {
+    if (typeof fileUrl !== "string" || !fileUrl.startsWith("/uploads/")) return;
+    const filePath = path.join(uploadsDirectory, path.basename(fileUrl));
+    try {
+        await fs.unlink(filePath);
+    } catch (error) {
+        if (error.code !== "ENOENT") throw error;
     }
 };
 
@@ -71,10 +217,11 @@ exports.getLessons = async (req, res) => {
 
         const lessons = await Lesson.findAll({
             where: { courseId: access.course.id },
+            include: [{ model: User, as: "uploader", attributes: ["id", "fullName"], required: false }],
             order: [["moduleId", "ASC"], ["orderIndex", "ASC"], ["id", "ASC"]]
         });
 
-        res.json(lessons);
+        res.json(lessons.map(toMaterialResponse));
 
     } catch (error) {
         console.error("Failed to load lessons:", error);

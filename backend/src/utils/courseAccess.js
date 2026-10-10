@@ -27,7 +27,7 @@ const getCourseAccess = async (courseId, user) => {
         };
     }
 
-    return { course, isManager, isEnrolled };
+    return { course, isManager, isEnrolled, enrollment };
 };
 
 module.exports = getCourseAccess;

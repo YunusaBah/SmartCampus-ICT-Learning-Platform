@@ -16,13 +16,25 @@ const Enrollment = sequelize.define("Enrollment", {
     courseId: {
         type: DataTypes.INTEGER,
         allowNull: false
+    },
+
+    canPostAnnouncements: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+
+    announcementRoleName: {
+        type: DataTypes.STRING(80),
+        allowNull: true
     }
 }, {
     indexes: [
         {
             unique: true,
             fields: ["studentId", "courseId"]
-        }
+        },
+        { fields: ["courseId", "studentId"] }
     ]
 });
 

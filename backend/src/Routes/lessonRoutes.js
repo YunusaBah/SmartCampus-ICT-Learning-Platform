@@ -15,6 +15,21 @@ router.post(
     lessonController.createLesson
 );
 
+router.patch(
+    "/:id",
+    authMiddleware,
+    requireRole("lecturer"),
+    upload.single("file"),
+    lessonController.updateLesson
+);
+
+router.delete(
+    "/:id",
+    authMiddleware,
+    requireRole("lecturer"),
+    lessonController.deleteLesson
+);
+
 router.get(
     "/course/:courseId",
     authMiddleware,

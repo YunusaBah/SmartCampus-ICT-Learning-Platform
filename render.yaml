@@ -28,5 +28,13 @@ services:
         sync: false
       - key: CLIENT_URL
         sync: false
+      - key: PASSWORD_RESET_DELIVERY_URL
+        sync: false
+      - key: PASSWORD_RESET_DELIVERY_SECRET
+        sync: false
+      - key: PASSWORD_RESET_PAGE_URL
+        sync: false
+      - key: UPLOADS_DIR
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false

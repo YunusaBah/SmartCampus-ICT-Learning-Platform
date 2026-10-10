@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { FaBullhorn } from "react-icons/fa";
 import API from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import AnnouncementCard from "../components/AnnouncementCard";
 
 const Announcements = () => {
     const { isStaff } = useAuth();
@@ -21,7 +21,11 @@ const Announcements = () => {
                 const courseResponse = await API.get(isStaff ? "/courses/my" : "/enrollments/my-courses");
                 const availableCourses = isStaff
                     ? courseResponse.data
-                    : courseResponse.data.map((enrollment) => enrollment.course).filter(Boolean);
+                    : courseResponse.data
+                        .map((enrollment) => enrollment.course
+                            ? { ...enrollment.course, canPostAnnouncements: enrollment.canPostAnnouncements }
+                            : null)
+                        .filter(Boolean);
                 const resultSets = await Promise.all(availableCourses.map(async (course) => {
                     const response = await API.get(`/courses/${course.id}/announcements`);
                     return response.data.map((announcement) => ({
@@ -83,14 +87,15 @@ const Announcements = () => {
                 <span className="grades-header-icon"><FaBullhorn /></span>
             </header>
 
-            <details className="feature-create-panel">
+            {(isStaff || courses.some((course) => course.canPostAnnouncements)) && <details className="feature-create-panel">
                 <summary>Post an announcement</summary>
                 <form className="feature-form-grid" onSubmit={createAnnouncement}>
                         <label>Course
                             <select required value={form.courseId} onChange={(event) => setForm({ ...form, courseId: event.target.value })}>
                                 <option value="">Choose a course</option>
                                 {isStaff && <option value="all">All my courses</option>}
-                                {courses.map((course) => <option value={course.id} key={course.id}>{course.title}</option>)}
+                                {courses.filter((course) => isStaff || course.canPostAnnouncements)
+                                    .map((course) => <option value={course.id} key={course.id}>{course.title}</option>)}
                             </select>
                         </label>
                         <label>Title<input required maxLength={255} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
@@ -98,22 +103,14 @@ const Announcements = () => {
                         <button type="submit" className="btn btn-inline">Publish announcement</button>
                         {status && <p className="feature-status" role="status">{status}</p>}
                 </form>
-            </details>
+            </details>}
 
             {loading ? <p className="dashboard-loading" role="status">Loading announcements...</p> : error ? (
                 <div className="dashboard-alert" role="alert">{error}</div>
             ) : announcements.length ? (
                 <section className="announcement-list">
                     {announcements.map((announcement) => (
-                        <article className="announcement-card" key={announcement.id}>
-                            <span className="announcement-icon"><FaBullhorn /></span>
-                            <div className="announcement-copy">
-                                <div className="announcement-meta"><Link to={`/courses/${announcement.courseId}`}>{announcement.courseTitle}</Link><time>{new Date(announcement.createdAt).toLocaleString()}</time></div>
-                                <h2>{announcement.title}</h2>
-                                <p>{announcement.body}</p>
-                                <span className="announcement-author">Posted by {announcement.author?.fullName || "Course staff"}</span>
-                            </div>
-                        </article>
+                        <AnnouncementCard key={announcement.id} announcement={announcement} isStaff={isStaff} />
                     ))}
                 </section>
             ) : (

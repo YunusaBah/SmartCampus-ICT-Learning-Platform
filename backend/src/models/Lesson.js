@@ -23,6 +23,30 @@ const Lesson = sequelize.define("Lesson", {
         type: DataTypes.STRING
     },
 
+    fileName: {
+        type: DataTypes.STRING
+    },
+
+    description: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+
+    mimeType: {
+        type: DataTypes.STRING(127),
+        allowNull: true
+    },
+
+    fileSize: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+
+    uploadedById: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+
     fileUrl: {
         type: DataTypes.STRING
     },

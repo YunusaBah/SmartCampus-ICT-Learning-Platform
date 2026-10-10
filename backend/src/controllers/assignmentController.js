@@ -1,30 +1,47 @@
 const { Op } = require("sequelize");
 const Assignment = require("../models/Assignment");
+const AssignmentRead = require("../models/AssignmentRead");
 const Submission = require("../models/Submission");
 const Enrollment = require("../models/Enrollment");
 const Course = require("../models/Course");
 const User = require("../models/User");
+const recordAuditLog = require("../utils/recordAuditLog");
 const getCourseAccess = require("../utils/courseAccess");
 const discardUpload = require("../utils/discardUpload");
 const { sequelize } = require("../config/db");
 const createNotifications = require("../utils/createNotifications");
+const validateMaterialFile = require("../utils/validateMaterialFile");
+
+const assignmentDeadline = (value) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        if (parsed.toISOString().slice(0, 10) !== value) return null;
+        parsed.setUTCHours(23, 59, 59, 999);
+    }
+    return parsed;
+};
 
 exports.createAssignment = async (req, res) => {
     try {
         const { title, description, dueDate, courseId } = req.body;
+        const parsedDueDate = assignmentDeadline(dueDate);
 
         if (typeof title !== "string" || !title.trim() ||
             typeof description !== "string" || !description.trim() ||
-            !dueDate || !Number.isSafeInteger(Number(courseId)) || Number(courseId) <= 0 ||
-            Number.isNaN(new Date(dueDate).getTime())) {
+            !dueDate || !Number.isSafeInteger(Number(courseId)) || Number(courseId) <= 0 || !parsedDueDate) {
+            await discardUpload(req.file);
             return res.status(400).json({ message: "All assignment fields are required" });
         }
 
+        if (req.file) await validateMaterialFile(req.file);
         const course = await Course.findByPk(courseId);
         if (!course) {
+            await discardUpload(req.file);
             return res.status(404).json({ message: "Course not found" });
         }
         if (course.lecturerId !== req.user.id) {
+            await discardUpload(req.file);
             return res.status(403).json({ message: "You can only add assignments to your courses" });
         }
 
@@ -32,9 +49,24 @@ exports.createAssignment = async (req, res) => {
             const created = await Assignment.create({
                 title: title.trim(),
                 description: description.trim(),
-                dueDate: new Date(dueDate),
-                courseId
+                dueDate: parsedDueDate,
+                courseId,
+                fileUrl: req.file ? `/uploads/${req.file.filename}` : null,
+                fileName: req.file?.originalname || null
             }, { transaction });
+            await recordAuditLog({
+                actorId: req.user.id,
+                action: "assignment.created",
+                entityType: "Assignment",
+                entityId: created.id,
+                newValues: {
+                    title: created.title,
+                    description: created.description,
+                    dueDate: created.dueDate,
+                    courseId: created.courseId
+                },
+                transaction
+            });
             await createNotifications({
                 courseId: course.id,
                 type: "assignment",
@@ -53,9 +85,51 @@ exports.createAssignment = async (req, res) => {
         });
 
     } catch (error) {
+        await discardUpload(req.file);
+        if (error.message === "File contents do not match a supported material file type") {
+            return res.status(400).json({ message: error.message });
+        }
         console.error("Failed to create assignment:", error);
         res.status(500).json({ message: "Failed to create assignment" });
     }
+};
+
+exports.updateAssignment = async (req, res) => {
+    const assignment = await Assignment.findByPk(req.params.id);
+    if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+    const course = await Course.findByPk(assignment.courseId);
+    if (!course || course.lecturerId !== req.user.id) {
+        return res.status(403).json({ message: "Only the course lecturer can reschedule this assignment" });
+    }
+    if (req.body.dueDate === undefined) {
+        return res.status(400).json({ message: "A new due date is required" });
+    }
+    const dueDate = assignmentDeadline(req.body.dueDate);
+    if (!dueDate) return res.status(400).json({ message: "Enter a valid assignment due date" });
+    const previousDueDate = assignment.dueDate;
+    assignment.dueDate = dueDate;
+    await sequelize.transaction(async (transaction) => {
+        await assignment.save({ transaction });
+        await recordAuditLog({
+            actorId: req.user.id,
+            action: "assignment.due_date.updated",
+            entityType: "Assignment",
+            entityId: assignment.id,
+            oldValues: { dueDate: previousDueDate },
+            newValues: { dueDate },
+            transaction
+        });
+        await createNotifications({
+            courseId: course.id,
+            type: "assignment",
+            title: `Assignment due date updated: ${assignment.title}`,
+            body: `New due date: ${dueDate.toLocaleString()}`,
+            resourceType: "assignment",
+            resourceId: assignment.id,
+            transaction
+        });
+    });
+    res.json({ message: "Assignment due date updated", assignment });
 };
 
 exports.getAssignments = async (req, res) => {
@@ -96,6 +170,20 @@ exports.getMyAssignments = async (req, res) => {
                     model: Course,
                     as: "course",
                     attributes: ["id", "title"]
+                },
+                {
+                    model: Submission,
+                    as: "submissions",
+                    where: { studentId: req.user.id },
+                    required: false,
+                    attributes: ["id", "studentId", "assignmentId", "fileUrl", "fileName", "answerText", "grade", "feedback", "createdAt"]
+                },
+                {
+                    model: AssignmentRead,
+                    as: "reads",
+                    where: { studentId: req.user.id },
+                    required: false,
+                    attributes: ["readAt"]
                 }
             ],
             order: [["dueDate", "ASC"]]
@@ -107,6 +195,20 @@ exports.getMyAssignments = async (req, res) => {
         console.error("Failed to load student assignments:", error);
         res.status(500).json({ message: "Failed to load assignments" });
     }
+};
+
+exports.markAssignmentRead = async (req, res) => {
+    const assignment = await Assignment.findByPk(req.params.id);
+    if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+    const enrolled = await Enrollment.findOne({
+        where: { studentId: req.user.id, courseId: assignment.courseId }
+    });
+    if (!enrolled) return res.status(403).json({ message: "Enroll in the course first" });
+    const [read] = await AssignmentRead.findOrCreate({
+        where: { assignmentId: assignment.id, studentId: req.user.id },
+        defaults: { assignmentId: assignment.id, studentId: req.user.id, readAt: new Date() }
+    });
+    res.json({ readAt: read.readAt });
 };
 
 exports.getCourseSubmissions = async (req, res) => {
@@ -177,10 +279,27 @@ exports.gradeSubmission = async (req, res) => {
             return res.status(403).json({ message: "Access denied" });
         }
 
+        const oldValues = {
+            grade: submission.grade,
+            feedback: submission.feedback
+        };
         submission.grade = grade.trim();
         if (feedback !== undefined) submission.feedback = feedback.trim() || null;
+        const newValues = {
+            grade: submission.grade,
+            feedback: submission.feedback
+        };
         await sequelize.transaction(async (transaction) => {
             await submission.save({ transaction });
+            await recordAuditLog({
+                actorId: req.user.id,
+                action: "assignment.grade.updated",
+                entityType: "Submission",
+                entityId: submission.id,
+                oldValues,
+                newValues,
+                transaction
+            });
             await createNotifications({
                 userIds: [submission.studentId],
                 type: "grade",
@@ -218,15 +337,17 @@ exports.getMySubmissions = async (req, res) => {
 
 exports.submitAssignment = async (req, res) => {
     try {
-        const { assignmentId } = req.body;
+        const { assignmentId, answerText } = req.body;
 
         if (!assignmentId || !Number.isSafeInteger(Number(assignmentId)) || Number(assignmentId) <= 0) {
             await discardUpload(req.file);
             return res.status(400).json({ message: "assignmentId is required" });
         }
 
-        if (!req.file) {
-            return res.status(400).json({ message: "Assignment file is required" });
+        if ((answerText !== undefined && (typeof answerText !== "string" || answerText.length > 20000)) ||
+            (!req.file && (typeof answerText !== "string" || !answerText.trim()))) {
+            await discardUpload(req.file);
+            return res.status(400).json({ message: "Enter a reply or attach a submission file" });
         }
 
         const assignment = await Assignment.findByPk(assignmentId);
@@ -247,10 +368,24 @@ exports.submitAssignment = async (req, res) => {
             return res.status(403).json({ message: "Enroll in the course first" });
         }
 
+        if (Date.now() > new Date(assignment.dueDate).getTime()) {
+            await discardUpload(req.file);
+            return res.status(409).json({ message: "You cannot submit this assignment after its due date. Contact your lecturer if the deadline needs to be extended." });
+        }
+        const existingSubmission = await Submission.findOne({
+            where: { assignmentId: assignment.id, studentId: req.user.id }
+        });
+        if (existingSubmission) {
+            await discardUpload(req.file);
+            return res.status(409).json({ message: "You have already submitted this assignment." });
+        }
+        if (req.file) await validateMaterialFile(req.file);
         const submission = await Submission.create({
             studentId: req.user.id,
             assignmentId,
-            fileUrl: `/uploads/${req.file.filename}`
+            fileUrl: req.file ? `/uploads/${req.file.filename}` : null,
+            fileName: req.file?.originalname || null,
+            answerText: answerText?.trim() || null
         });
 
         res.status(201).json({
@@ -260,6 +395,9 @@ exports.submitAssignment = async (req, res) => {
 
     } catch (error) {
         await discardUpload(req.file);
+        if (error.message === "File contents do not match a supported material file type") {
+            return res.status(400).json({ message: error.message });
+        }
         console.error("Failed to submit assignment:", error);
         res.status(500).json({ message: "Failed to submit assignment" });
     }

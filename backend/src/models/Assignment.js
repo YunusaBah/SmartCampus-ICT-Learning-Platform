@@ -24,11 +24,26 @@ const Assignment = sequelize.define("Assignment", {
         allowNull: false
     },
 
+    fileUrl: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+
+    fileName: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+
     courseId: {
         type: DataTypes.INTEGER,
         allowNull: false
     }
 
+}, {
+    indexes: [
+        { fields: ["courseId", "dueDate"] },
+        { fields: ["dueDate"] }
+    ]
 });
 
 module.exports = Assignment;

@@ -14,6 +14,66 @@ const {
 
 require("../config/env");
 
+const passwordRecoveryMessage = "If an eligible account exists, recovery instructions will be sent.";
+
+const getResetDeliveryConfig = () => {
+    if (process.env.NODE_ENV === "development") {
+        return { development: true };
+    }
+
+    const deliveryUrl = process.env.PASSWORD_RESET_DELIVERY_URL;
+    const deliverySecret = process.env.PASSWORD_RESET_DELIVERY_SECRET;
+    const resetPageUrl = process.env.PASSWORD_RESET_PAGE_URL;
+    if (!deliveryUrl || !deliverySecret || deliverySecret.length < 32 || !resetPageUrl) {
+        return null;
+    }
+
+    try {
+        const delivery = new URL(deliveryUrl);
+        const resetPage = new URL(resetPageUrl);
+        if (!["http:", "https:"].includes(delivery.protocol) ||
+            !["http:", "https:"].includes(resetPage.protocol) ||
+            delivery.username || delivery.password || resetPage.username || resetPage.password ||
+            (process.env.NODE_ENV !== "development" &&
+                (delivery.protocol !== "https:" || resetPage.protocol !== "https:"))) {
+            return null;
+        }
+        return { deliveryUrl: delivery.href, deliverySecret, resetPageUrl: resetPage.href };
+    } catch {
+        return null;
+    }
+};
+
+const deliverPasswordReset = async (delivery, email, token) => {
+    if (delivery.development) return;
+
+    let resetUrl = null;
+    if (token) {
+        const url = new URL(delivery.resetPageUrl);
+        url.hash = new URLSearchParams({ resetToken: token }).toString();
+        resetUrl = url.href;
+    }
+
+    const response = await fetch(delivery.deliveryUrl, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-Reset-Delivery-Secret": delivery.deliverySecret
+        },
+        body: JSON.stringify({
+            type: "password_reset",
+            email,
+            resetUrl,
+            expiresInMinutes: 30
+        }),
+        redirect: "error",
+        signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) {
+        throw new Error("Password reset delivery endpoint rejected the request");
+    }
+};
+
 const issueSession = (user, res, statusCode = 200) => {
     if (!process.env.JWT_SECRET) {
         console.error("JWT_SECRET is not configured");
@@ -218,6 +278,112 @@ exports.login = async (req, res) => {
     }
 };
 
+exports.requestPasswordReset = async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    if (!email) {
+        return res.status(400).json({ message: "Enter a valid email address" });
+    }
+
+    const delivery = getResetDeliveryConfig();
+    if (!delivery) {
+        return res.status(503).json({ message: "Password recovery is temporarily unavailable." });
+    }
+
+    res.set("Cache-Control", "no-store");
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    let user;
+    try {
+        user = await User.findOne({ where: { email } });
+        if (user?.passwordLoginEnabled) {
+            user.passwordResetTokenHash = tokenHash;
+            user.passwordResetExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+            await user.save();
+        }
+
+        await deliverPasswordReset(delivery, email, user?.passwordLoginEnabled ? token : null);
+        return res.status(202).json({
+            message: passwordRecoveryMessage,
+            ...(delivery.development ? { resetToken: token } : {})
+        });
+    } catch {
+        if (user?.passwordLoginEnabled) {
+            try {
+                await User.update({
+                    passwordResetTokenHash: null,
+                    passwordResetExpiresAt: null
+                }, {
+                    where: { id: user.id, passwordResetTokenHash: tokenHash }
+                });
+            } catch {
+                console.error("Failed to invalidate an undelivered password reset token");
+            }
+        }
+        console.error("Password reset request could not be completed");
+        return res.status(503).json({ message: "Password recovery is temporarily unavailable." });
+    }
+};
+
+exports.resetPassword = async (req, res) => {
+    try {
+        res.set("Cache-Control", "no-store");
+        const { token, newPassword } = req.body;
+        if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token) ||
+            !validatePassword(newPassword)) {
+            return res.status(400).json({ message: "A valid reset token and new password are required." });
+        }
+
+        const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+        const user = await User.findOne({
+            where: {
+                passwordResetTokenHash: tokenHash,
+                passwordResetExpiresAt: { [Op.gt]: new Date() }
+            }
+        });
+        if (!user?.passwordLoginEnabled) {
+            return res.status(400).json({ message: "This reset link is invalid or has expired." });
+        }
+
+        const password = await bcrypt.hash(newPassword, 10);
+        const [updated] = await User.update({
+            password,
+            passwordResetTokenHash: null,
+            passwordResetExpiresAt: null,
+            tokenVersion: User.sequelize.literal("tokenVersion + 1")
+        }, {
+            validate: false,
+            where: {
+                id: user.id,
+                passwordResetTokenHash: tokenHash,
+                passwordResetExpiresAt: { [Op.gt]: new Date() }
+            }
+        });
+        if (!updated) {
+            return res.status(400).json({ message: "This reset link is invalid or has expired." });
+        }
+
+        return res.json({ message: "Password reset successfully. Please log in again." });
+    } catch (error) {
+        console.error("Password reset failed:", error);
+        return res.status(500).json({ message: "Unable to reset password right now." });
+    }
+};
+
+exports.logout = async (req, res) => {
+    try {
+        const [updated] = await User.update({
+            tokenVersion: User.sequelize.literal("tokenVersion + 1")
+        }, { where: { id: req.user.id }, validate: false });
+        if (!updated) {
+            return res.status(401).json({ message: "User no longer exists" });
+        }
+        return res.json({ message: "Logged out successfully" });
+    } catch (error) {
+        console.error("Logout failed:", error);
+        return res.status(500).json({ message: "Unable to log out right now." });
+    }
+};
+
 exports.updateProfile = async (req, res) => {
     try {
         const { fullName, email, matNumber, phone } = req.body;
@@ -248,6 +414,10 @@ exports.updateProfile = async (req, res) => {
         }
 
         user.fullName = normalizedName;
+        if (normalizedEmail !== user.email) {
+            user.passwordResetTokenHash = null;
+            user.passwordResetExpiresAt = null;
+        }
         user.email = normalizedEmail;
         if (user.role === "student") {
             const normalizedMatNumber = normalizeStudentId(matNumber);
@@ -305,8 +475,10 @@ exports.updatePassword = async (req, res) => {
 
         user.password = await bcrypt.hash(newPassword, 10);
         user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+        user.passwordResetTokenHash = null;
+        user.passwordResetExpiresAt = null;
         await user.save();
-        return res.json({ message: "Password updated successfully" });
+        return res.json({ message: "Password updated successfully. Please log in again." });
     } catch (error) {
         console.error("Failed to update password:", error);
         return res.status(500).json({ message: "Failed to update password" });

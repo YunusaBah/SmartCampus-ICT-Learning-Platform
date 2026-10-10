@@ -22,6 +22,8 @@ import Announcements from "./pages/Announcements";
 import Messages from "./pages/Messages";
 import Certificates from "./pages/Certificates";
 import Todos from "./pages/Todos";
+import Materials from "./pages/Materials";
+import Quizzes from "./pages/Quizzes";
 
 import "./styles/global.css";
 
@@ -35,13 +37,19 @@ const readAccountId = () => {
 };
 
 const themeKey = (accountId) => `smartcampus:theme:${accountId}`;
+const textSizeKey = (accountId) => `smartcampus:text-size:${accountId}`;
 
 const readTheme = (accountId) => localStorage.getItem(themeKey(accountId)) === "dark" ? "dark" : "light";
+const readTextSize = (accountId) => {
+    const value = Number(localStorage.getItem(textSizeKey(accountId)) || 0);
+    return Number.isInteger(value) && value >= 0 && value <= 20 ? value : 0;
+};
 
 function App() {
     const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 768);
     const [accountId, setAccountId] = useState(readAccountId);
     const [theme, setTheme] = useState(() => readTheme(readAccountId()));
+    const [textSize, setTextSize] = useState(() => readTextSize(readAccountId()));
     const closeSidebar = () => setSidebarOpen(false);
     const toggleSidebar = () => setSidebarOpen(prev => !prev);
 
@@ -51,19 +59,27 @@ function App() {
     }, [accountId, theme]);
 
     useEffect(() => {
+        document.documentElement.style.fontSize = `${100 + textSize * 2}%`;
+        localStorage.setItem(textSizeKey(accountId), String(textSize));
+    }, [accountId, textSize]);
+
+    useEffect(() => {
         const syncAccountTheme = () => {
             const nextAccountId = readAccountId();
             setAccountId(nextAccountId);
             setTheme(readTheme(nextAccountId));
+            setTextSize(readTextSize(nextAccountId));
         };
         const syncOtherTab = (event) => {
             if (event.key === "user" || event.key === "token") syncAccountTheme();
         };
 
         window.addEventListener("smartcampus:account-changed", syncAccountTheme);
+        window.addEventListener("smartcampus:text-size-changed", syncAccountTheme);
         window.addEventListener("storage", syncOtherTab);
         return () => {
             window.removeEventListener("smartcampus:account-changed", syncAccountTheme);
+            window.removeEventListener("smartcampus:text-size-changed", syncAccountTheme);
             window.removeEventListener("storage", syncOtherTab);
         };
     }, []);
@@ -97,6 +113,8 @@ function App() {
                         <Route index element={<Navigate to="dashboard" replace />} />
                         <Route path="dashboard" element={<Dashboard />} />
                         <Route path="courses" element={<Courses />} />
+                        <Route path="materials" element={<Materials />} />
+                        <Route path="quizzes" element={<Quizzes />} />
                         <Route path="catalog" element={
                             <RoleRoute roles={["student"]}>
                                 <Courses catalog />

@@ -17,7 +17,9 @@ const JoinClass = () => {
         try {
             const res = await API.post("/enrollments/join", { classCode: code.toUpperCase().trim() });
             setSuccess(`Successfully joined "${res.data.course.title}"! Redirecting...`);
-            setTimeout(() => navigate(`/courses/${res.data.course.id}`), 1500);
+            window.dispatchEvent(new Event("smartcampus:dashboard-refresh"));
+            window.dispatchEvent(new Event("smartcampus:courses-refresh"));
+            setTimeout(() => navigate(`/courses/${res.data.course.id}?section=overview`), 1500);
         } catch (err) {
             setError(err.response?.data?.message || "Failed to join class");
         } finally {
@@ -29,7 +31,7 @@ const JoinClass = () => {
         <div className="form-box">
             <h2>Join a Class</h2>
             <p style={{ color: "var(--theme-muted)", marginBottom: 20, fontSize: "0.9rem" }}>
-                Enter the 6-character code your lecturer gave you.
+                Enter the 6-8 character code your lecturer gave you.
             </p>
 
             {error && <p style={{ color: "#ff6b6b", marginBottom: 12, fontSize: "0.9rem" }}>{error}</p>}
@@ -41,7 +43,7 @@ const JoinClass = () => {
                     placeholder="e.g. ABC123"
                     value={code}
                     onChange={(e) => setCode(e.target.value.toUpperCase())}
-                    maxLength={6}
+                    maxLength={8}
                     required
                     style={{
                         letterSpacing: "0.3em",

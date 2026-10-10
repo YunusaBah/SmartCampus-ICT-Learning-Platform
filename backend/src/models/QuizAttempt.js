@@ -9,8 +9,10 @@ module.exports = sequelize.define("QuizAttempt", {
     deadlineAt: { type: DataTypes.DATE, allowNull: false },
     submittedAt: { type: DataTypes.DATE, allowNull: true },
     answers: { type: DataTypes.JSON, allowNull: false },
-    score: { type: DataTypes.INTEGER, allowNull: true },
-    totalQuestions: { type: DataTypes.INTEGER, allowNull: true }
+    score: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+    totalQuestions: { type: DataTypes.INTEGER, allowNull: true },
+    totalMarks: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+    theoryPending: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }
 }, {
     indexes: [{ fields: ["studentId", "assessmentId", "submittedAt"] }]
 });

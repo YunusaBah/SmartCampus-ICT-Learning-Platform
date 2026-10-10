@@ -5,6 +5,9 @@ import API_BASE from "../config";
 import Register from "./Register";
 import GoogleSignInButton from "../components/GoogleSignInButton";
 
+const readResetTokenFromHash = () =>
+    new URLSearchParams(window.location.hash.slice(1)).get("resetToken") || "";
+
 const Login = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -13,11 +16,17 @@ const Login = () => {
     const [formData, setFormData] = useState({ email: "", password: "" });
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
-    const [loginOpen, setLoginOpen] = useState(false);
+    const [resetToken, setResetToken] = useState(readResetTokenFromHash);
+    const [loginOpen, setLoginOpen] = useState(() => Boolean(resetToken));
     const [registerOpen, setRegisterOpen] = useState(false);
     const [developerOpen, setDeveloperOpen] = useState(false);
     const [loginRole, setLoginRole] = useState("");
     const [registrationMessage, setRegistrationMessage] = useState("");
+    const [recoveryMode, setRecoveryMode] = useState(() => resetToken ? "reset" : "");
+    const [recoveryEmail, setRecoveryEmail] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [recoveryStatus, setRecoveryStatus] = useState("");
 
     const finishLogin = (result) => {
         localStorage.setItem("token", result.data.token);
@@ -46,9 +55,20 @@ const Login = () => {
         };
     }, [loginOpen, registerOpen, developerOpen]);
 
+    useEffect(() => {
+        if (!new URLSearchParams(location.hash.slice(1)).has("resetToken")) return;
+        navigate({
+            pathname: location.pathname,
+            search: location.search,
+            hash: ""
+        }, { replace: true });
+    }, [location.hash, location.pathname, location.search, navigate]);
+
     const openLogin = () => {
         setError("");
         setLoginRole("");
+        setRecoveryMode("");
+        setRecoveryStatus("");
         setLoginOpen(true);
     };
 
@@ -61,6 +81,7 @@ const Login = () => {
         setLoginOpen(false);
         setRegisterOpen(false);
         setDeveloperOpen(false);
+        setRecoveryMode("");
     };
 
     const handleChange = (e) => {
@@ -105,6 +126,47 @@ const Login = () => {
                     ? `SmartCampus could not reach the API at ${API_BASE}. Check your connection and try again.`
                     : "Google login failed. Please try again."
             ));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRecoverySubmit = async (event) => {
+        event.preventDefault();
+        setRecoveryStatus("");
+        setError("");
+        setLoading(true);
+        try {
+            if (recoveryMode === "request") {
+                const response = await API.post("/auth/password/forgot", { email: recoveryEmail });
+                if (response.data.resetToken) {
+                    setResetToken(response.data.resetToken);
+                    setRecoveryMode("reset");
+                    setRecoveryStatus("Development reset token generated. Choose a new password below.");
+                } else {
+                    setRecoveryStatus(response.data.message);
+                }
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                setError("The new passwords do not match.");
+                return;
+            }
+            const response = await API.post("/auth/password/reset", {
+                token: resetToken,
+                newPassword
+            });
+            setLoginOpen(false);
+            setRecoveryMode("");
+            setNewPassword("");
+            setConfirmPassword("");
+            navigate("/login", {
+                replace: true,
+                state: { message: response.data.message }
+            });
+        } catch (recoveryError) {
+            setError(recoveryError.response?.data?.message || "Unable to process password recovery.");
         } finally {
             setLoading(false);
         }
@@ -259,28 +321,97 @@ const Login = () => {
                         </button>
                         <header className="login-card-heading">
                             <p className="login-eyebrow">THE UNIVERSITY OF THE GAMBIA</p>
-                            <h2 id="login-title">Welcome back</h2>
-                            <p>Choose your account type to continue.</p>
+                            <h2 id="login-title">
+                                {recoveryMode === "request" ? "Recover your account" :
+                                    recoveryMode === "reset" ? "Choose a new password" : "Welcome back"}
+                            </h2>
+                            <p>{recoveryMode === "request"
+                                ? "Enter your email and we’ll send recovery instructions if an eligible account exists."
+                                : recoveryMode === "reset"
+                                    ? "Use a new password to secure your account."
+                                    : "Choose your account type to continue."}</p>
                         </header>
 
-                        <div className="account-type-picker" aria-label="Choose account type">
-                            {["student", "lecturer"].map((role) => (
-                                <button
-                                    className={loginRole === role ? "active" : ""}
-                                    key={role}
-                                    type="button"
-                                    aria-pressed={loginRole === role}
-                                    onClick={() => {
-                                        setLoginRole(role);
-                                        setError("");
-                                    }}
-                                >
-                                    {role === "student" ? "Student" : "Lecturer"}
-                                </button>
-                            ))}
-                        </div>
-
-                        {loginRole && (
+                        {recoveryMode ? (
+                            <>
+                                {recoveryStatus && <p className="login-success" role="status">{recoveryStatus}</p>}
+                                {error && <p className="login-error" role="alert">{error}</p>}
+                                <form className="login-form" onSubmit={handleRecoverySubmit}>
+                                    {recoveryMode === "request" ? (
+                                        <label>
+                                            Email address
+                                            <input
+                                                type="email"
+                                                autoComplete="email"
+                                                maxLength={254}
+                                                required
+                                                value={recoveryEmail}
+                                                onChange={(event) => setRecoveryEmail(event.target.value)}
+                                            />
+                                        </label>
+                                    ) : (
+                                        <>
+                                            <label>
+                                                New password
+                                                <input
+                                                    type="password"
+                                                    autoComplete="new-password"
+                                                    minLength={6}
+                                                    required
+                                                    value={newPassword}
+                                                    onChange={(event) => setNewPassword(event.target.value)}
+                                                />
+                                            </label>
+                                            <label>
+                                                Confirm new password
+                                                <input
+                                                    type="password"
+                                                    autoComplete="new-password"
+                                                    minLength={6}
+                                                    required
+                                                    value={confirmPassword}
+                                                    onChange={(event) => setConfirmPassword(event.target.value)}
+                                                />
+                                            </label>
+                                        </>
+                                    )}
+                                    <button className="btn" type="submit" disabled={loading}>
+                                        {loading ? "Please wait..." : recoveryMode === "request" ? "Send recovery instructions" : "Reset password"}
+                                    </button>
+                                </form>
+                                <p className="login-register-link">
+                                    <button
+                                        className="login-register-trigger"
+                                        type="button"
+                                        onClick={() => {
+                                            setRecoveryMode("");
+                                            setRecoveryStatus("");
+                                            setError("");
+                                        }}
+                                    >
+                                        Back to login
+                                    </button>
+                                </p>
+                            </>
+                        ) : (
+                            <>
+                                <div className="account-type-picker" aria-label="Choose account type">
+                                    {["student", "lecturer"].map((role) => (
+                                        <button
+                                            className={loginRole === role ? "active" : ""}
+                                            key={role}
+                                            type="button"
+                                            aria-pressed={loginRole === role}
+                                            onClick={() => {
+                                                setLoginRole(role);
+                                                setError("");
+                                            }}
+                                        >
+                                            {role === "student" ? "Student" : "Lecturer"}
+                                        </button>
+                                    ))}
+                                </div>
+                                {loginRole && (
                             <>
                                 {error && <p className="login-error" role="alert">{error}</p>}
                                 <div className="google-signin-section">
@@ -324,8 +455,24 @@ const Login = () => {
                                     </button>
                                 </form>
                             </>
+                                )}
+                                <p className="login-register-link">
+                                    <button
+                                        className="login-register-trigger"
+                                        type="button"
+                                        onClick={() => {
+                                            setRecoveryEmail(formData.email);
+                                            setRecoveryStatus("");
+                                            setError("");
+                                            setRecoveryMode("request");
+                                        }}
+                                    >
+                                        Forgot password?
+                                    </button>
+                                </p>
+                            </>
                         )}
-                        <p className="login-register-link">
+                        {!recoveryMode && <p className="login-register-link">
                             Don&apos;t have an account?{" "}
                             <button
                                 className="login-register-trigger"
@@ -337,7 +484,7 @@ const Login = () => {
                             >
                                 Create one
                             </button>
-                        </p>
+                        </p>}
                     </section>
                 </div>
             )}

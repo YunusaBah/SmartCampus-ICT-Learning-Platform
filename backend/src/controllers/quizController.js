@@ -2,6 +2,7 @@ const Quiz = require("../models/Quiz");
 const QuizResult = require("../models/QuizResult");
 const Course = require("../models/Course");
 const Enrollment = require("../models/Enrollment");
+const { sequelize } = require("../config/db");
 const getCourseAccess = require("../utils/courseAccess");
 
 exports.createQuiz = async (req, res) => {
@@ -59,7 +60,7 @@ exports.getCourseQuizzes = async (req, res) => {
         if (access.status) return res.status(access.status).json({ message: access.message });
 
         const quizzes = await Quiz.findAll({
-            where: { courseId: access.course.id },
+            where: { courseId: access.course.id, assessmentId: null },
             attributes: access.isManager ? undefined : { exclude: ["correctAnswer"] },
             order: [["id", "DESC"]]
         });
@@ -80,40 +81,45 @@ exports.submitQuiz = async (req, res) => {
             return res.status(400).json({ message: "quizId and selectedAnswer are required" });
         }
 
-        const quiz = await Quiz.findByPk(quizId);
-
-        if (!quiz) {
-            return res.status(404).json({ message: "Quiz not found" });
-        }
-
-        const enrolled = await Enrollment.findOne({
-            where: {
-                studentId: req.user.id,
-                courseId: quiz.courseId
+        const outcome = await sequelize.transaction(async (transaction) => {
+            const quiz = await Quiz.findByPk(quizId, {
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!quiz) return { status: 404, message: "Quiz not found" };
+            if (quiz.assessmentId) {
+                return { status: 400, message: "Submit this question through its timed assessment" };
             }
+            const enrolled = await Enrollment.findOne({
+                where: { studentId: req.user.id, courseId: quiz.courseId },
+                transaction
+            });
+            if (!enrolled) return { status: 403, message: "Enroll in the course first" };
+
+            const previousResult = await QuizResult.findOne({
+                where: { studentId: req.user.id, quizId: quiz.id },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (previousResult) {
+                return { status: 409, message: "You have already submitted this quiz question. Submissions are final." };
+            }
+
+            const score = selectedAnswer.toUpperCase() === quiz.correctAnswer.toUpperCase() ? 1 : 0;
+            const result = await QuizResult.create({
+                studentId: req.user.id,
+                quizId,
+                selectedAnswer: selectedAnswer.toUpperCase(),
+                score
+            }, { transaction });
+            return { result, score };
         });
 
-        if (!enrolled) {
-            return res.status(403).json({ message: "Enroll in the course first" });
-        }
-
-        let score = 0;
-
-        if (selectedAnswer.toUpperCase() === quiz.correctAnswer.toUpperCase()) {
-            score = 1;
-        }
-
-        const result = await QuizResult.create({
-            studentId: req.user.id,
-            quizId,
-            selectedAnswer: selectedAnswer.toUpperCase(),
-            score
-        });
-
+        if (outcome.status) return res.status(outcome.status).json({ message: outcome.message });
         res.json({
             message: "Quiz submitted",
-            result,
-            passed: score === 1
+            result: outcome.result,
+            passed: outcome.score === 1
         });
 
     } catch (error) {
