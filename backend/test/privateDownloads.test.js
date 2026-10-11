@@ -6,13 +6,16 @@ process.env.DB_PASSWORD = "test";
 const { afterEach, test } = require("node:test");
 const assert = require("node:assert/strict");
 const Submission = require("../src/models/Submission");
+const Enrollment = require("../src/models/Enrollment");
 const downloadController = require("../src/controllers/downloadController");
 const assignmentController = require("../src/controllers/assignmentController");
 
 const originalFindByPk = Submission.findByPk;
+const originalEnrollmentFindOne = Enrollment.findOne;
 
 afterEach(() => {
     Submission.findByPk = originalFindByPk;
+    Enrollment.findOne = originalEnrollmentFindOne;
 });
 
 const response = () => ({
@@ -35,10 +38,11 @@ const response = () => ({
 });
 
 test("students cannot download another student's submission", async () => {
+    Enrollment.findOne = async () => null;
     Submission.findByPk = async () => ({
         studentId: 17,
         fileUrl: "/uploads/secret.pdf",
-        assignment: { course: { lecturerId: 9 } }
+        assignment: { courseId: 2, course: { lecturerId: 9 } }
     });
     const res = response();
 
@@ -55,7 +59,7 @@ test("lecturers cannot download submissions from another lecturer's course", asy
     Submission.findByPk = async () => ({
         studentId: 17,
         fileUrl: "/uploads/secret.pdf",
-        assignment: { course: { lecturerId: 9 } }
+        assignment: { courseId: 2, course: { lecturerId: 9 } }
     });
     const res = response();
 
@@ -66,6 +70,24 @@ test("lecturers cannot download submissions from another lecturer's course", asy
 
     assert.equal(res.statusCode, 403);
     assert.deepEqual(res.body, { message: "You cannot download this submission" });
+});
+
+test("students with grading permission can access other students' submission files", async () => {
+    Enrollment.findOne = async () => ({ permissions: ["gradeAssignments"] });
+    Submission.findByPk = async () => ({
+        studentId: 17,
+        fileUrl: "/uploads/secret.pdf",
+        assignment: { courseId: 2, course: { lecturerId: 9 } }
+    });
+    const res = response();
+
+    await downloadController.download({
+        params: { resourceType: "submission", id: "41" },
+        user: { id: 18, role: "student" }
+    }, res, assert.fail);
+
+    assert.equal(res.statusCode, 404);
+    assert.deepEqual(res.body, { message: "File not found" });
 });
 
 test("lecturers cannot change grades for another lecturer's submission", async () => {

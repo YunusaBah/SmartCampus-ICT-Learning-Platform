@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import API from "../services/api";
-import API_BASE from "../config";
 import GoogleSignInButton from "../components/GoogleSignInButton";
 
 const saveSession = (result) => {
@@ -71,7 +70,7 @@ const Register = ({ embedded = false, onClose, onSuccess, onLogin }) => {
             } else {
                 setError(registrationError.response?.data?.message || (
                     registrationError.code === "ECONNABORTED" || registrationError.code === "ERR_NETWORK"
-                        ? `SmartCampus could not reach the API at ${API_BASE}. Check your connection and try again.`
+                        ? "Unable to connect to SmartCampus. Check your connection and try again."
                         : "Google registration failed. Please try again."
                 ));
             }
@@ -115,7 +114,7 @@ const Register = ({ embedded = false, onClose, onSuccess, onLogin }) => {
             <header className="register-heading">
                 <p className="register-eyebrow">THE UNIVERSITY OF THE GAMBIA</p>
                 <h2 id="register-title">Create your account</h2>
-                <p>Choose your account type and verify your Google email to continue.</p>
+                <p>Select account type and verify your Google email.</p>
             </header>
 
             {error && <p className="register-error" role="alert">{error}</p>}
@@ -144,7 +143,7 @@ const Register = ({ embedded = false, onClose, onSuccess, onLogin }) => {
                 <div className="google-signin-section">
                     <p className="google-signin-copy">
                         {formData.role === "student"
-                            ? "Verify a UTG or other active Google email. Student details are required before joining classes."
+                            ? "Verify your Google email. Student details are required."
                             : "Use your active Google account to open the lecturer workspace."}
                     </p>
                     <GoogleSignInButton

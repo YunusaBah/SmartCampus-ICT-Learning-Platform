@@ -20,7 +20,8 @@ const Lesson = sequelize.define("Lesson", {
     },
 
     videoUrl: {
-        type: DataTypes.STRING
+        type: DataTypes.STRING(2048),
+        allowNull: true
     },
 
     fileName: {

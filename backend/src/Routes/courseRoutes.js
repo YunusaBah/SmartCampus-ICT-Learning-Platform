@@ -66,10 +66,10 @@ router.delete(
 );
 
 router.patch(
-    "/:id/students/:studentId/announcement-permission",
+    "/:id/students/:studentId/permissions",
     authMiddleware,
     requireRole("lecturer"),
-    courseController.updateStudentAnnouncementPermission
+    courseController.updateStudentCoursePermissions
 );
 
 router.post(

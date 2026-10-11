@@ -8,11 +8,13 @@ import MaterialPreviewDialog from "../components/MaterialPreviewDialog";
 import { FaUpload } from "react-icons/fa";
 
 const Assignments = () => {
-    const { isStaff } = useAuth();
+    const { isStaff, user } = useAuth();
     const [data, setData] = useState([]);
+    const [permittedCourses, setPermittedCourses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
     const [gradeInputs, setGradeInputs] = useState({});
+    const [gradingSubmissionId, setGradingSubmissionId] = useState(null);
     const [msg, setMsg] = useState(null);
     const [refreshKey, setRefreshKey] = useState(0);
     const [selectedCourse, setSelectedCourse] = useState("all");
@@ -63,8 +65,19 @@ const Assignments = () => {
                     );
                     if (active) setData(withSubs);
                 } else {
-                    const res = await API.get("/assignments/my");
-                    if (active) setData(res.data);
+                    const [assignmentResponse, enrollmentResponse] = await Promise.all([
+                        API.get("/assignments/my"),
+                        API.get("/enrollments/my-courses")
+                    ]);
+                    if (active) {
+                        setData(assignmentResponse.data);
+                        setPermittedCourses(enrollmentResponse.data
+                            .filter((enrollment) => enrollment.course)
+                            .map((enrollment) => ({
+                                ...enrollment.course,
+                                permissions: enrollment.permissions || []
+                            })));
+                    }
                 }
             } catch (err) {
                 if (active) setLoadError(err.response?.data?.message || "Unable to load grading data.");
@@ -78,15 +91,27 @@ const Assignments = () => {
     }, [isStaff, refreshKey]);
 
     const handleGrade = async (submissionId) => {
-        const grade = (gradeInputs[submissionId] || "").trim();
+        const grade = (gradeInputs[submissionId] ?? "").trim();
         if (!grade) { showMsg("Enter a grade first", "error"); return; }
+        setGradingSubmissionId(submissionId);
         try {
-            await API.patch(`/assignments/submissions/${submissionId}/grade`, { grade });
+            const response = await API.patch(`/assignments/submissions/${submissionId}/grade`, { grade });
+            const savedSubmission = response.data.submission;
+            setData((current) => current.map((course) => ({
+                ...course,
+                assignments: course.assignments.map((assignment) => ({
+                    ...assignment,
+                    submissions: assignment.submissions?.map((submission) =>
+                        submission.id === submissionId ? { ...submission, ...savedSubmission } : submission
+                    )
+                }))
+            })));
+            setGradeInputs((previous) => ({ ...previous, [submissionId]: savedSubmission.grade }));
             showMsg("Grade saved!");
-            setGradeInputs((prev) => ({ ...prev, [submissionId]: "" }));
-            setRefreshKey((key) => key + 1);
         } catch (err) {
             showMsg(err.response?.data?.message || "Grading failed", "error");
+        } finally {
+            setGradingSubmissionId(null);
         }
     };
 
@@ -259,7 +284,6 @@ const Assignments = () => {
                 <header>
                     <p className="eyebrow">ASSESSMENT REVIEW</p>
                     <h1>Grading</h1>
-                    <p className="subtitle">Review assignments, quizzes, and timed assessment results across your classes.</p>
                 </header>
                 {loadError && <p className="materials-error" role="alert">{loadError}</p>}
 
@@ -296,9 +320,9 @@ const Assignments = () => {
                                         <th scope="col">Student</th>
                                         <th scope="col">Submitted</th>
                                         <th scope="col">Status</th>
-                                        <th scope="col">Grade</th>
+                                        <th scope="col" className="grading-mark-column">Grade</th>
                                         <th scope="col">Submission</th>
-                                        <th scope="col">Action</th>
+                                        <th scope="col" className="grading-action-column">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -321,12 +345,13 @@ const Assignments = () => {
                                                     <td><span className={submission.grade === "Pending" ? "grading-status pending" : "grading-status graded"}>
                                                         {submission.grade === "Pending" ? "Needs grading" : "Graded"}
                                                     </span></td>
-                                                    <td>
+                                                    <td className="grading-mark-column">
                                                         <input
                                                             className="grading-grade-input"
                                                             aria-label={`Grade for ${submission.student?.fullName || "student"} on ${assignment.title}`}
-                                                            placeholder={submission.grade === "Pending" ? "Enter grade" : submission.grade}
-                                                            value={gradeInputs[submission.id] || ""}
+                                                            placeholder="Mark"
+                                                            value={gradeInputs[submission.id] ?? (submission.grade === "Pending" ? "" : submission.grade)}
+                                                            disabled={gradingSubmissionId === submission.id}
                                                             onChange={(event) => setGradeInputs((previous) => ({
                                                                 ...previous,
                                                                 [submission.id]: event.target.value
@@ -342,9 +367,9 @@ const Assignments = () => {
                                                             </div>
                                                             : !submission.answerText && "No file or reply"}
                                                     </td>
-                                                    <td>
-                                                        <button type="button" className="grading-save-button" onClick={() => handleGrade(submission.id)}>
-                                                            Save grade
+                                                    <td className="grading-action-column">
+                                                        <button type="button" className="grading-save-button" disabled={gradingSubmissionId === submission.id} onClick={() => handleGrade(submission.id)}>
+                                                            {gradingSubmissionId === submission.id ? "Saving..." : "Save"}
                                                         </button>
                                                     </td>
                                                 </>
@@ -380,7 +405,6 @@ const Assignments = () => {
             <header className="assignments-page-header">
                 <div>
                     <h1>Recent Assignments</h1>
-                    <p className="subtitle">Filter by course, then use To-do for deadlines more than a week away, Due for overdue or upcoming deadlines within a week, and Done for submitted work.</p>
                 </div>
                 <button type="button" className="btn btn-inline assignments-submit-top-button" onClick={() => {
                     setSubmissionModalError("");
@@ -389,6 +413,25 @@ const Assignments = () => {
                     <FaUpload aria-hidden="true" /> Submit assignment
                 </button>
             </header>
+            {!isStaff && permittedCourses.some((course) =>
+                course.permissions.includes("createAssignments") || course.permissions.includes("gradeAssignments")
+            ) && (
+                <section className="course-feature-section" aria-label="Course staff permissions">
+                    <h2>Course permissions</h2>
+                    <div className="course-workspace-links">
+                        {permittedCourses.filter((course) => course.permissions.includes("createAssignments")).map((course) => (
+                            <Link key={`create-${course.id}`} to={`/courses/${course.id}?section=assignments`}>
+                                <FaUpload /> Create assignment · {course.title}
+                            </Link>
+                        ))}
+                        {permittedCourses.filter((course) => course.permissions.includes("gradeAssignments")).map((course) => (
+                            <Link key={`grade-${course.id}`} to={`/courses/${course.id}?section=grading`}>
+                                Grade assignments · {course.title}
+                            </Link>
+                        ))}
+                    </div>
+                </section>
+            )}
             {loadError && <p className="materials-error" role="alert">{loadError}</p>}
             {msg && <p className={msg.type === "error" ? "materials-error" : "feature-status"} role={msg.type === "error" ? "alert" : "status"}>{msg.text}</p>}
 
@@ -457,6 +500,11 @@ const Assignments = () => {
                                             <div><h2>{assignment.title}</h2><span>{assignment.course?.title}</span></div>
                                             <span className={`assignment-status-badge${submitted ? " submitted" : overdue ? " overdue" : ""}`}>{status}</span>
                                         </header>
+                                        {assignment.course?.lecturerEmail && (
+                                            <a className="student-assignment-lecturer-email" href={`mailto:${assignment.course.lecturerEmail}`}>
+                                                Contact lecturer · {assignment.course.lecturerEmail}
+                                            </a>
+                                        )}
                                         <p className="assignment-due-date">Due {new Date(assignment.dueDate).toLocaleString()}</p>
                                         <details onToggle={(event) => {
                                             if (event.currentTarget.open) markRead(assignment);
@@ -479,8 +527,9 @@ const Assignments = () => {
                                                 {submission.grade && submission.grade !== "Pending" && <p><strong>Grade:</strong> {submission.grade}{submission.feedback ? ` · ${submission.feedback}` : ""}</p>}
                                             </div>
                                         ) : overdue ? (
-                                            <p className="assignment-deadline-error" role="status">You cannot submit after the due date. Ask your lecturer to reschedule or extend the deadline.</p>
+                                            <p className="assignment-deadline-error" role="status">Deadline passed. Contact your lecturer to request an extension.</p>
                                         ) : (
+                                            <>
                                             <div className="student-assignment-submit">
                                                 <label>Your reply
                                                     <textarea
@@ -508,6 +557,20 @@ const Assignments = () => {
                                                     {submittingIds.includes(assignment.id) ? "Submitting..." : "Submit assignment"}
                                                 </button>
                                             </div>
+                                            {assignment.course?.lecturerEmail && (
+                                                <div className="assignment-email-submit">
+                                                    <a
+                                                        className="btn btn-secondary btn-inline"
+                                                        href={`mailto:${assignment.course.lecturerEmail}?subject=${encodeURIComponent(`Assignment submission: ${assignment.title}`)}&body=${encodeURIComponent(
+                                                            `Dear Lecturer,\n\nI am submitting my work for "${assignment.title}" in ${assignment.course.title}.\n\nStudent: ${user?.fullName || "Please enter your name"}${user?.matNumber ? `\nMatric number: ${user.matNumber}` : ""}\nDue date: ${new Date(assignment.dueDate).toLocaleString()}\n\nPlease find my assignment attached.\n\nRegards,\n${user?.fullName || ""}`
+                                                        )}`}
+                                                    >
+                                                        Submit by email
+                                                    </a>
+                                                    <span>Opens your email app. Attach your work manually; emailed submissions are not recorded in this platform.</span>
+                                                </div>
+                                            )}
+                                            </>
                                         )}
                                     </article>
                                 );
@@ -529,7 +592,6 @@ const Assignments = () => {
                     <section className="course-modal" role="dialog" aria-modal="true" aria-labelledby="student-submit-assignment-heading">
                         <button type="button" className="course-modal-close" aria-label="Close submission form" onClick={() => setSubmitModalOpen(false)}>×</button>
                         <h2 id="student-submit-assignment-heading">Submit assignment</h2>
-                        <p className="course-modal-intro">Choose the course and assignment subject, attach your work, then submit it.</p>
                         <form className="course-create-form" onSubmit={handleSubmitFromModal}>
                             <label>Course
                                 <select

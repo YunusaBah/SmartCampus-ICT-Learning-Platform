@@ -24,6 +24,11 @@ const recordAuditLog = require("../utils/recordAuditLog");
 const uploadsDirectory = require("../utils/uploadsDirectory");
 const validateMaterialFile = require("../utils/validateMaterialFile");
 const { fn, col } = require("sequelize");
+const {
+    COURSE_PERMISSIONS,
+    COURSE_PERMISSION_ROLES,
+    normalizePermissions
+} = require("../utils/coursePermissions");
 const optionalText = (value, maxLength, fieldName) => {
     if (value === undefined || value === null || value === "") return null;
     if (typeof value !== "string" || value.trim().length > maxLength) {
@@ -80,6 +85,11 @@ const validateCourseFields = (body, creating = false) => {
             ? parseCourseDates(body.startDate, body.endDate)
             : {})
     };
+};
+
+const idValue = (value) => {
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
 };
 
 exports.createCourse = async (req, res) => {
@@ -484,7 +494,7 @@ exports.getMyStudents = async (req, res) => {
             include: [{
                 model: Enrollment,
                 as: "enrollments",
-                attributes: ["createdAt"],
+                attributes: ["createdAt", "permissionRole", "permissions", "canPostAnnouncements"],
                 include: [{
                     model: User,
                     as: "student",
@@ -501,7 +511,9 @@ exports.getMyStudents = async (req, res) => {
                     ...enrollment.student.toJSON(),
                     courseTitle: course.title,
                     courseId: course.id,
-                    enrolledAt: enrollment.createdAt
+                    enrolledAt: enrollment.createdAt,
+                    permissionRole: enrollment.permissionRole,
+                    permissions: normalizePermissions(enrollment.permissions, enrollment.canPostAnnouncements)
                 }))
         );
 
@@ -568,7 +580,9 @@ exports.getCourseDetail = async (req, res) => {
                 ...enrollment.student.toJSON(),
                 enrolledAt: enrollment.createdAt,
                 canPostAnnouncements: enrollment.canPostAnnouncements,
-                announcementRoleName: enrollment.announcementRoleName
+                announcementRoleName: enrollment.announcementRoleName,
+                permissionRole: enrollment.permissionRole,
+                permissions: normalizePermissions(enrollment.permissions, enrollment.canPostAnnouncements)
             }));
         } else {
             const enrollments = await Enrollment.findAll({
@@ -603,7 +617,11 @@ exports.getCourseDetail = async (req, res) => {
             classmates,
             isLecturer: isManager,
             isEnrolled,
-            canPostAnnouncements: Boolean(access.enrollment?.canPostAnnouncements)
+            canPostAnnouncements: Boolean(access.enrollment &&
+                normalizePermissions(access.enrollment.permissions, access.enrollment.canPostAnnouncements)
+                    .includes("postAnnouncements")),
+            permissions: normalizePermissions(access.enrollment?.permissions, access.enrollment?.canPostAnnouncements),
+            permissionRole: access.enrollment?.permissionRole || null
         });
     } catch (error) {
         console.error("Failed to load course:", error);
@@ -611,28 +629,38 @@ exports.getCourseDetail = async (req, res) => {
     }
 };
 
-exports.updateStudentAnnouncementPermission = async (req, res) => {
+exports.updateStudentCoursePermissions = async (req, res) => {
     const courseId = idValue(req.params.id);
     const studentId = idValue(req.params.studentId);
-    const { canPostAnnouncements, roleName } = req.body;
-    if (!courseId || !studentId || typeof canPostAnnouncements !== "boolean" ||
-        (canPostAnnouncements && (typeof roleName !== "string" || !roleName.trim() || roleName.trim().length > 80)) ||
-        (!canPostAnnouncements && roleName !== undefined && roleName !== null && roleName !== "")) {
-        return res.status(400).json({ message: "Course, student, and announcement permission are required" });
+    const { role, permissions } = req.body;
+    if (!courseId || !studentId ||
+        (role !== null && !COURSE_PERMISSION_ROLES.includes(role)) ||
+        !Array.isArray(permissions) ||
+        permissions.some((permission) => !COURSE_PERMISSIONS.includes(permission)) ||
+        (permissions.length > 0 && !role) ||
+        (role === null && permissions.length > 0)) {
+        return res.status(400).json({ message: "Choose a valid student role and course permissions" });
     }
     const course = await Course.findOne({ where: { id: courseId, lecturerId: req.user.id } });
     if (!course) return res.status(404).json({ message: "Course not found" });
     const enrollment = await Enrollment.findOne({ where: { courseId, studentId } });
     if (!enrollment) return res.status(404).json({ message: "Student is not enrolled in this course" });
-    enrollment.canPostAnnouncements = canPostAnnouncements;
-    enrollment.announcementRoleName = canPostAnnouncements ? roleName.trim() : null;
+    const normalizedPermissions = normalizePermissions(permissions);
+    enrollment.permissionRole = role || null;
+    enrollment.permissions = normalizedPermissions;
+    enrollment.canPostAnnouncements = normalizedPermissions.includes("postAnnouncements");
+    enrollment.announcementRoleName = enrollment.canPostAnnouncements
+        ? (role === "class_representative" ? "Class Representative" : "Student Assistant")
+        : null;
     await enrollment.save();
     res.json({
-        message: enrollment.canPostAnnouncements
-            ? "Student can now post announcements in this course"
-            : "Student announcement permission removed",
+        message: role
+            ? "Student role and course permissions saved"
+            : "Student role and course permissions removed",
         canPostAnnouncements: enrollment.canPostAnnouncements,
-        announcementRoleName: enrollment.announcementRoleName
+        announcementRoleName: enrollment.announcementRoleName,
+        permissionRole: enrollment.permissionRole,
+        permissions: normalizedPermissions
     });
 };
 

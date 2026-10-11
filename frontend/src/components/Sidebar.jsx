@@ -1,11 +1,9 @@
-import { useEffect, useState } from "react";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import {
     FaBookOpen,
     FaChartBar,
     FaClipboardList,
     FaCog,
-    FaGraduationCap,
     FaHome,
     FaCalendarAlt,
     FaBell,
@@ -13,15 +11,10 @@ import {
     FaQuestionCircle
 } from "react-icons/fa";
 import { useAuth } from "../hooks/useAuth";
-import API from "../services/api";
 
 const Sidebar = ({ open, onClose }) => {
-    const navigate = useNavigate();
     const location = useLocation();
-    const { user, isStaff } = useAuth();
-    const [profileUser, setProfileUser] = useState(user);
-    const [profileOpen, setProfileOpen] = useState(false);
-    const [logoutError, setLogoutError] = useState("");
+    const { isStaff } = useAuth();
     const courseId = location.pathname.match(/^\/courses\/([^/]+)$/)?.[1];
     const activeCourseSection = new URLSearchParams(location.search).get("section") || "materials";
     const courseSections = [
@@ -36,37 +29,8 @@ const Sidebar = ({ open, onClose }) => {
         ["announcements", "Announcements", <FaBell />]
     ];
 
-    useEffect(() => {
-        const refreshProfile = () => {
-            try {
-                setProfileUser(JSON.parse(localStorage.getItem("user") || "null"));
-            } catch {
-                setProfileUser(null);
-            }
-        };
-        window.addEventListener("smartcampus:user-updated", refreshProfile);
-        return () => window.removeEventListener("smartcampus:user-updated", refreshProfile);
-    }, []);
-
     const handleNavClick = () => {
         if (window.innerWidth <= 768) onClose?.();
-    };
-
-    const handleLogout = async () => {
-        setLogoutError("");
-        let logoutMessage = "Logged out successfully.";
-        try {
-            await API.post("/auth/logout");
-        } catch (error) {
-            logoutMessage = error.response?.data?.message
-                ? `Logged out on this device, but the server could not confirm session revocation: ${error.response.data.message}`
-                : "Logged out on this device. Server session revocation could not be confirmed.";
-        } finally {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            window.dispatchEvent(new Event("smartcampus:account-changed"));
-            navigate("/login", { replace: true, state: { message: logoutMessage } });
-        }
     };
 
     const link = (to, label, icon) => (
@@ -86,35 +50,13 @@ const Sidebar = ({ open, onClose }) => {
     return (
         <aside className={open ? "sidebar" : "sidebar closed"}>
             <div className="sidebar-brand">
-                <button
-                    type="button"
-                    className="sidebar-profile-toggle"
-                    aria-expanded={profileOpen}
-                    aria-label="Open profile menu"
-                    onClick={() => setProfileOpen((current) => !current)}
-                >
-                    <span className="brand-mark"><FaGraduationCap /></span>
+                <div className="sidebar-brand-lockup">
+                    <span className="brand-mark"><img src="/smartcampus-mark.png" alt="" /></span>
                     <span className="sidebar-brand-copy">
                         <strong>SmartCampus</strong>
                         <span>LEARNING PLATFORM</span>
-                        <b>{profileUser?.fullName || "SmartCampus user"}</b>
                     </span>
-                </button>
-                {profileOpen && (
-                    <div className="sidebar-profile-menu">
-                        <strong>{profileUser?.fullName || "SmartCampus user"}</strong>
-                        <span>{profileUser?.email || ""}</span>
-                        <span className="sidebar-profile-role">{profileUser?.role || ""}</span>
-                        {logoutError && <span role="alert">{logoutError}</span>}
-                        {profileUser?.passwordLoginEnabled !== false && (
-                            <Link to="/settings#security" onClick={() => {
-                                setProfileOpen(false);
-                                handleNavClick();
-                            }}>Change password</Link>
-                        )}
-                        <button type="button" onClick={handleLogout}>Log out</button>
-                    </div>
-                )}
+                </div>
             </div>
 
             <nav>

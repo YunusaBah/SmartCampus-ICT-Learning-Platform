@@ -27,6 +27,8 @@ const submissionFileNameMigrationName = "20261010_05_submission_file_names";
 const announcementRolesMigrationName = "20261010_06_announcement_role_names";
 const announcementEngagementMigrationName = "20261010_07_announcement_engagement";
 const assignmentTextRepliesMigrationName = "20261010_08_assignment_text_replies";
+const learningResourceLinksMigrationName = "20261010_09_expand_learning_resource_links";
+const courseStudentPermissionsMigrationName = "20261010_10_course_student_permissions";
 const additions = {
     Users: {
         tokenVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
@@ -879,6 +881,67 @@ module.exports = async () => {
         }
         await queryInterface.bulkInsert("SchemaMigrations", [{
             name: assignmentTextRepliesMigrationName,
+            appliedAt: new Date()
+        }]);
+    }
+
+    const learningResourceLinksApplied = await queryInterface.select(null, "SchemaMigrations", {
+        where: { name: learningResourceLinksMigrationName },
+        limit: 1
+    });
+    if (!learningResourceLinksApplied.length) {
+        tables = await getTables(queryInterface);
+        if (hasTable(tables, "Lessons")) {
+            const lessonColumns = await queryInterface.describeTable("Lessons");
+            if (Object.prototype.hasOwnProperty.call(lessonColumns, "videoUrl")) {
+                await queryInterface.changeColumn("Lessons", "videoUrl", {
+                    type: DataTypes.STRING(2048),
+                    allowNull: true
+                });
+            }
+        }
+        await queryInterface.bulkInsert("SchemaMigrations", [{
+            name: learningResourceLinksMigrationName,
+            appliedAt: new Date()
+        }]);
+    }
+
+    const courseStudentPermissionsApplied = await queryInterface.select(null, "SchemaMigrations", {
+        where: { name: courseStudentPermissionsMigrationName },
+        limit: 1
+    });
+    if (!courseStudentPermissionsApplied.length) {
+        tables = await getTables(queryInterface);
+        if (hasTable(tables, "Enrollments")) {
+            const enrollmentColumns = await queryInterface.describeTable("Enrollments");
+            if (!Object.prototype.hasOwnProperty.call(enrollmentColumns, "permissionRole")) {
+                await queryInterface.addColumn("Enrollments", "permissionRole", {
+                    type: DataTypes.ENUM("student_assistant", "class_representative"),
+                    allowNull: true
+                });
+            }
+            if (!Object.prototype.hasOwnProperty.call(enrollmentColumns, "permissions")) {
+                await queryInterface.addColumn("Enrollments", "permissions", {
+                    type: DataTypes.JSON,
+                    allowNull: true
+                });
+            }
+            await sequelize.query(
+                "UPDATE `Enrollments` SET `permissions` = JSON_ARRAY('postAnnouncements') WHERE `canPostAnnouncements` = 1 AND (`permissions` IS NULL OR JSON_LENGTH(`permissions`) = 0)"
+            );
+            await sequelize.query(
+                "UPDATE `Enrollments` SET `permissionRole` = 'class_representative' WHERE `canPostAnnouncements` = 1 AND `permissionRole` IS NULL"
+            );
+            await sequelize.query(
+                "UPDATE `Enrollments` SET `permissions` = JSON_ARRAY() WHERE `permissions` IS NULL"
+            );
+            await queryInterface.changeColumn("Enrollments", "permissions", {
+                type: DataTypes.JSON,
+                allowNull: false
+            });
+        }
+        await queryInterface.bulkInsert("SchemaMigrations", [{
+            name: courseStudentPermissionsMigrationName,
             appliedAt: new Date()
         }]);
     }

@@ -27,6 +27,16 @@ const Enrollment = sequelize.define("Enrollment", {
     announcementRoleName: {
         type: DataTypes.STRING(80),
         allowNull: true
+    },
+
+    permissionRole: {
+        type: DataTypes.ENUM("student_assistant", "class_representative"),
+        allowNull: true
+    },
+
+    permissions: {
+        type: DataTypes.JSON,
+        allowNull: false
     }
 }, {
     indexes: [

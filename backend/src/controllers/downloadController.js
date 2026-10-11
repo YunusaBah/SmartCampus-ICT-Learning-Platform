@@ -5,7 +5,9 @@ const Assignment = require("../models/Assignment");
 const Course = require("../models/Course");
 const Lesson = require("../models/Lesson");
 const Submission = require("../models/Submission");
+const Enrollment = require("../models/Enrollment");
 const getCourseAccess = require("../utils/courseAccess");
+const { hasCoursePermission } = require("../utils/coursePermissions");
 
 const uploadsDirectory = require("../utils/uploadsDirectory");
 
@@ -89,7 +91,14 @@ exports.download = async (req, res, next) => {
             submission.studentId === req.user.id;
         const isCourseLecturer = req.user.role === "lecturer" &&
             submission.assignment.course.lecturerId === req.user.id;
-        if (!isSubmittingStudent && !isCourseLecturer) {
+        const enrollment = req.user.role === "student" && !isSubmittingStudent
+            ? await Enrollment.findOne({
+                where: { courseId: submission.assignment.courseId, studentId: req.user.id }
+            })
+            : null;
+        const isPermittedGrader = submission.studentId !== req.user.id &&
+            hasCoursePermission(enrollment, "gradeAssignments");
+        if (!isSubmittingStudent && !isCourseLecturer && !isPermittedGrader) {
             return res.status(403).json({ message: "You cannot download this submission" });
         }
         fileUrl = submission.fileUrl;

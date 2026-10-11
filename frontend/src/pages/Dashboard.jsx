@@ -19,6 +19,22 @@ const formatDate = (value) => {
     return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
 };
 
+const delegatedPermissionLabels = {
+    uploadMaterials: "Upload course materials",
+    createAssignments: "Create assignments",
+    gradeAssignments: "Grade assignments",
+    postAnnouncements: "Post announcements",
+    messageLecturer: "Message the lecturer"
+};
+
+const delegatedPermissionLinks = {
+    uploadMaterials: "materials",
+    createAssignments: "assignments",
+    gradeAssignments: "assignments",
+    postAnnouncements: "announcements",
+    messageLecturer: "announcements"
+};
+
 const Dashboard = () => {
     const [dashboard, setDashboard] = useState(null);
     const [error, setError] = useState("");
@@ -73,6 +89,7 @@ const Dashboard = () => {
 
     const isLecturer = dashboard.role === "lecturer";
     const { summary, courses } = dashboard;
+    const delegatedPermissions = dashboard.delegatedPermissions || [];
     const firstName = dashboard.profile?.displayName?.trim().split(/\s+/)[0];
 
     return (
@@ -81,11 +98,6 @@ const Dashboard = () => {
                 <div>
                     <p className="eyebrow">{isLecturer ? "TEACHING OVERVIEW" : "YOUR LEARNING SPACE"}</p>
                     <h1>{firstName ? `Welcome back, ${firstName}` : "Welcome back!"}</h1>
-                    <p className="subtitle">
-                        {isLecturer
-                            ? "Here's an overview of your courses and teaching activities."
-                            : "Here's an overview of your learning activities."}
-                    </p>
                 </div>
                 <div className="welcome-mark" aria-hidden="true"><FaGraduationCap /></div>
             </header>
@@ -134,7 +146,7 @@ const Dashboard = () => {
                         ) : (
                             <div className="dashboard-empty">
                                 <FaBookOpen />
-                                <div><strong>You haven't created any courses yet.</strong><span>Create your first course to begin teaching on SmartCampus.</span></div>
+                                <div><strong>You haven't created any courses yet.</strong></div>
                                 <Link to="/courses" className="btn btn-inline"><FaPlus /> Create course</Link>
                             </div>
                         )}
@@ -196,6 +208,38 @@ const Dashboard = () => {
                         </Link>
                     </section>
 
+                    {delegatedPermissions.length > 0 && (
+                        <section className="dashboard-section delegated-permissions-section">
+                            <div className="section-heading">
+                                <div><p className="eyebrow">YOUR COURSE ROLES</p><h2>Permissions granted to you</h2></div>
+                            </div>
+                            <div className="delegated-permissions-list">
+                                {delegatedPermissions.map((grant) => (
+                                    <article className="delegated-permission-card" key={grant.courseId}>
+                                        <div>
+                                            <strong>{grant.courseTitle}</strong>
+                                            <span>{grant.role === "student_assistant"
+                                                ? "Student Assistant"
+                                                : grant.role === "class_representative"
+                                                    ? "Class Representative"
+                                                    : "Course access"}</span>
+                                        </div>
+                                        <div className="delegated-permission-links">
+                                            {grant.permissions.map((permission) => (
+                                                <Link
+                                                    to={`/courses/${grant.courseId}?section=${delegatedPermissionLinks[permission] || "overview"}`}
+                                                    key={permission}
+                                                >
+                                                    {delegatedPermissionLabels[permission] || permission}
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    </article>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
                     <div className="dashboard-columns">
                         <section className="dashboard-section">
                             <div className="section-heading">
@@ -205,20 +249,27 @@ const Dashboard = () => {
                             {courses.length ? (
                                 <div className="course-list">
                                     {courses.map((course, index) => (
-                                        <Link to={`/courses/${course.id}?section=overview`} className="course-list-item" key={course.id}>
+                                        <div className="course-list-item student-course-list-item" key={course.id}>
                                             <span className={`course-list-icon course-accent-${index % 3}`}><FaBookOpen /></span>
-                                            <span className="course-list-copy">
-                                                <strong>{course.title}</strong>
-                                                <span>Code: {course.courseCode || "Not set"} · {course.lecturerName} · {course.pendingAssignments} pending assignment{course.pendingAssignments === 1 ? "" : "s"}</span>
-                                            </span>
-                                            <FaArrowRight className="course-list-arrow" />
-                                        </Link>
+                                            <Link to={`/courses/${course.id}?section=overview`} className="student-course-main-link">
+                                                <span className="course-list-copy">
+                                                    <strong>{course.title}</strong>
+                                                    <span>Code: {course.courseCode || "Not set"} · {course.lecturerName} · {course.pendingAssignments} pending assignment{course.pendingAssignments === 1 ? "" : "s"}</span>
+                                                </span>
+                                                <FaArrowRight className="course-list-arrow" />
+                                            </Link>
+                                            {course.lecturerEmail && (
+                                                <a className="student-lecturer-email" href={`mailto:${course.lecturerEmail}`}>
+                                                    Contact lecturer · {course.lecturerEmail}
+                                                </a>
+                                            )}
+                                        </div>
                                     ))}
                                 </div>
                             ) : (
                                 <div className="dashboard-empty">
                                     <FaBookOpen />
-                                    <div><strong>You haven't joined any courses yet.</strong><span>Ask your lecturer for the course code and join a class to start learning.</span></div>
+                                    <div><strong>You haven't joined any courses yet.</strong></div>
                                     <Link to="/join" className="btn btn-inline">Join a course <FaArrowRight /></Link>
                                 </div>
                             )}
@@ -266,7 +317,6 @@ const Dashboard = () => {
                             <div className="upcoming-empty">
                                 <FaBullhorn />
                                 <strong>No recent announcements</strong>
-                                <span>Announcements from your enrolled courses will appear here.</span>
                             </div>
                         )}
                     </section>
@@ -314,9 +364,6 @@ const ActivitySection = ({ items = [], lecturer = false }) => (
             <div className="upcoming-empty">
                 <FaClock />
                 <strong>{lecturer ? "You're all caught up!" : "You're up to date!"}</strong>
-                <span>{lecturer
-                    ? "No pending submissions or upcoming activities require your attention right now."
-                    : "There are no upcoming assignments requiring your attention."}</span>
             </div>
         )}
     </section>

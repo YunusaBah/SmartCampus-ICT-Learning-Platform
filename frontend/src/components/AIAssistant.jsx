@@ -9,7 +9,7 @@ const AIAssistant = ({ courseName = "", lessonContent = "" }) => {
         role: "ai",
         text: isStaff
             ? `Hi! I can generate quiz questions for "${courseName}". Just ask me like: "Generate 3 questions about variables"`
-            : `Hi! I'm your learning assistant for "${courseName}". Ask me to explain anything — I won't give quiz answers directly, but I'll help you understand!`
+            : `How can I help with "${courseName}"?`
     }]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);

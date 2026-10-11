@@ -48,7 +48,7 @@ const Certificates = () => {
     return (
         <div className="page-content feature-page">
             <header className="feature-page-header">
-                <div><p className="eyebrow">YOUR ACHIEVEMENTS</p><h1>Certificates</h1><p className="subtitle">View completed course certificates and check eligible courses.</p></div>
+                <div><p className="eyebrow">YOUR ACHIEVEMENTS</p><h1>Certificates</h1></div>
                 <span className="grades-header-icon"><FaAward /></span>
             </header>
             {status && <p className="feature-status" role="status">{status}</p>}
@@ -65,7 +65,7 @@ const Certificates = () => {
                                     <div><span>SMARTCAMPUS CERTIFICATE</span><h3>{certificate.course?.title || "Course completion"}</h3><p>Issued {new Date(certificate.issuedAt).toLocaleDateString()}</p><code>{certificate.certificateCode}</code></div>
                                 </article>
                             ))}
-                        </div> : <div className="feature-empty"><FaAward /><strong>No certificates issued yet</strong><span>Complete all lessons in an eligible course to request a certificate.</span></div>}
+                        </div> : <div className="feature-empty"><FaAward /><strong>No certificates issued yet</strong><span>Complete all lessons to earn a certificate.</span></div>}
                     </section>
                     <section className="certificate-section">
                         <div className="section-heading"><div><p className="eyebrow">COURSE COMPLETION</p><h2>My courses</h2></div></div>
@@ -73,7 +73,7 @@ const Certificates = () => {
                             {courses.map((course) => (
                                 <article className="certificate-course" key={course.id}>
                                     <span className="course-list-icon"><FaBookOpen /></span>
-                                    <div><strong>{course.title}</strong><span>Certificate eligibility is based on completing all lessons.</span></div>
+                                    <div><strong>{course.title}</strong><span>Complete all lessons to check eligibility.</span></div>
                                     {issuedCourseIds.has(course.id) ? <span className="enrolled-badge">Issued</span> : (
                                         <button type="button" className="btn btn-inline" disabled={busyCourse === course.id} onClick={() => requestCertificate(course.id)}>
                                             {busyCourse === course.id ? "Checking..." : "Check eligibility"}
@@ -81,7 +81,7 @@ const Certificates = () => {
                                     )}
                                 </article>
                             ))}
-                        </div> : <p className="feature-empty">Join a course to track your completion certificates.</p>}
+                        </div> : <p className="feature-empty">No courses available.</p>}
                     </section>
                 </>
             )}

@@ -67,7 +67,7 @@ const GoogleSignInButton = ({ text = "signin_with", onCredential, onError }) => 
 
     if (!clientId) {
         return <p className="google-signin-notice" role="status">
-            Google sign-in is not configured yet. Set VITE_GOOGLE_CLIENT_ID in the frontend deployment settings.
+            Google sign-in is unavailable. Contact support.
         </p>;
     }
 

@@ -12,14 +12,14 @@ const Courses = ({ catalog = false }) => {
         ? searchParams.get("section")
         : null;
     const sectionDetails = {
-        overview: { title: "Course Overview", action: "Open overview", description: "Choose a course to view its overview and recent activity." },
-        materials: { title: "Materials", action: "Open materials", description: "Choose a course to view and manage its learning materials." },
-        students: { title: "Students", action: "View students", description: "Choose a course to see its enrolled students." },
-        quizzes: { title: "Quizes", action: "Open quizes", description: "Choose a course to take or manage its quizzes." },
-        assignments: { title: "Assignments", action: "Open assignments", description: "Choose a course to create or complete assignments." },
-        grading: { title: "Grading", action: "Open grading", description: "Choose a course to review submissions and grades." },
-        calendar: { title: "Calendar", action: "Open calendar", description: "Choose a course to view course events and deadlines." },
-        announcements: { title: "Announcements", action: "Open announcements", description: "Choose a course to read its announcements." }
+        overview: { title: "Course Overview", action: "Open overview" },
+        materials: { title: "Materials", action: "Open materials" },
+        students: { title: "Students", action: "View students" },
+        quizzes: { title: "Quizzes", action: "Open quizzes" },
+        assignments: { title: "Assignments", action: "Open assignments" },
+        grading: { title: "Grading", action: "Open grading" },
+        calendar: { title: "Calendar", action: "Open calendar" },
+        announcements: { title: "Announcements", action: "Open announcements" }
     }[courseSection];
     const [myCourses, setMyCourses] = useState([]);
     const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
@@ -231,7 +231,6 @@ const Courses = ({ catalog = false }) => {
                     <div>
                         <p className="eyebrow">LEARN SOMETHING NEW</p>
                         <h1>Course catalog</h1>
-                        <p className="subtitle">Explore courses available on SmartCampus and find your next class.</p>
                     </div>
                     <span className="catalog-count">{myCourses.length} {myCourses.length === 1 ? "course" : "courses"}</span>
                 </header>
@@ -297,9 +296,7 @@ const Courses = ({ catalog = false }) => {
                     <div className="catalog-empty">
                         <FaSearch aria-hidden="true" />
                         <h2>{myCourses.length ? "No courses match your search" : "No courses are available yet"}</h2>
-                        <p>{myCourses.length
-                            ? "Try another course name, topic, or lecturer."
-                            : "When lecturers publish courses, you can explore them here."}</p>
+                        <p>{myCourses.length ? "No matching courses." : "No courses available."}</p>
                     </div>
                 )}
             </div>
@@ -313,7 +310,6 @@ const Courses = ({ catalog = false }) => {
                 <header className="lecturer-courses-header">
                     <div>
                         <h1>{sectionDetails?.title || "My Courses"}</h1>
-                        <p className="subtitle">{sectionDetails?.description || "Create courses and share the class code with your students."}</p>
                     </div>
                     {!sectionDetails && <button
                         type="button"
@@ -337,7 +333,6 @@ const Courses = ({ catalog = false }) => {
                                 <FaTimes aria-hidden="true" />
                             </button>
                             <h2 id="create-course-heading">Create a course</h2>
-                            <p className="course-modal-intro">Enter the course name. The creation date is recorded automatically; other course settings can be managed in Settings.</p>
                             {msg && !msg.includes("cancelled") && (
                                 <p className="course-modal-feedback" role="alert">{msg}</p>
                             )}
@@ -435,7 +430,7 @@ const Courses = ({ catalog = false }) => {
                     </label>
                 </div>
                 <div className="card-grid">
-                    {myCourses.length === 0 && <p style={{ color: "var(--theme-muted)" }}>No courses yet. Create your first course to get started.</p>}
+                    {myCourses.length === 0 && <p style={{ color: "var(--theme-muted)" }}>No courses yet.</p>}
                     {filteredLecturerCourses.map(course => (
                         <article className="card lecturer-course-card" key={course.id}>
                             {course.classCode && (
@@ -479,7 +474,6 @@ const Courses = ({ catalog = false }) => {
                 <div>
                     <p className="eyebrow">YOUR LEARNING SPACE</p>
                     <h1>{sectionDetails?.title || "My Courses"}</h1>
-                    <p className="subtitle">{sectionDetails?.description || "Your enrolled courses, materials, and upcoming work."}</p>
                 </div>
                 <Link to="/join" className="btn btn-inline"><FaPlus /> Join course</Link>
             </header>
@@ -509,7 +503,7 @@ const Courses = ({ catalog = false }) => {
                 <div className="catalog-empty">
                     <FaBookOpen aria-hidden="true" />
                     <h2>You haven't joined any courses yet.</h2>
-                    <p>Enter the class code provided by your lecturer to get started.</p>
+                    <p>Enter your lecturer's class code.</p>
                     <Link to="/join" className="btn btn-inline"><FaPlus /> Join course</Link>
                 </div>
             ) : filteredStudentCourses.length ? (

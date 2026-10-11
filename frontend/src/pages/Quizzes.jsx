@@ -208,7 +208,6 @@ const Quizzes = () => {
                 <div>
                     <p className="eyebrow">COURSE ASSESSMENTS</p>
                     <h1>Quizzes</h1>
-                    <p className="subtitle">Find course quizzes and timed assessments.</p>
                 </div>
                 {isStaff && (
                     <button
@@ -285,9 +284,7 @@ const Quizzes = () => {
                 <div className="materials-empty">
                     <FaQuestionCircle aria-hidden="true" />
                     <h2>{quizzes.length ? "No quizzes match your filters" : "No quizzes available yet"}</h2>
-                    <p>{quizzes.length
-                        ? "Try another search or choose a different course."
-                        : "Quizzes published in your courses will appear here."}</p>
+                    <p>{quizzes.length ? "No matching quizzes." : "No quizzes available."}</p>
                 </div>
             )}
 
@@ -300,7 +297,6 @@ const Quizzes = () => {
                             <FaTimes aria-hidden="true" />
                         </button>
                         <h2 id="create-quiz-heading">Create a quiz</h2>
-                        <p className="course-modal-intro">Choose a course and quiz format, then publish it for your students.</p>
                         {createError && <p className="course-modal-feedback" role="alert">{createError}</p>}
                         <form className="course-create-form" onSubmit={createQuiz}>
                             <label>

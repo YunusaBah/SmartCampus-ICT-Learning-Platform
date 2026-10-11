@@ -18,6 +18,7 @@ const Certificate = require("../models/Certificate");
 const User = require("../models/User");
 const getCourseAccess = require("../utils/courseAccess");
 const createNotifications = require("../utils/createNotifications");
+const { hasCoursePermission } = require("../utils/coursePermissions");
 
 const idValue = (value) => {
     const id = Number(value);
@@ -269,7 +270,7 @@ const publishAnnouncement = async ({ course, title, body, authorId, authorRoleNa
 exports.createAnnouncement = async (req, res) => {
     const access = await courseParticipant(req.params.courseId, req.user);
     if (access.status) return res.status(access.status).json({ message: access.message });
-    if (!access.isManager && !access.enrollment?.canPostAnnouncements) {
+    if (!access.isManager && !hasCoursePermission(access.enrollment, "postAnnouncements")) {
         return res.status(403).json({ message: "Your lecturer has not granted announcement posting permission for this course" });
     }
     const authorRoleName = access.isManager ? null : access.enrollment.announcementRoleName;
@@ -529,6 +530,118 @@ exports.sendMessage = async (req, res) => {
     }
     const room = await getStudentMessageRoom(courseId, req.user, recipientId);
     if (room.error) return accessResponse(res, room.error);
+    const message = await sequelize.transaction(async (transaction) => {
+        const created = await Message.create({
+            courseId,
+            senderId: req.user.id,
+            recipientId,
+            body: req.body.body.trim()
+        }, { transaction });
+        await createNotifications({
+            userIds: [recipientId],
+            type: "message",
+            title: "New course message",
+            body: req.body.body.trim().slice(0, 500),
+            resourceType: "message",
+            resourceId: created.id,
+            transaction
+        });
+        return created;
+    });
+    res.status(201).json(message);
+};
+
+const lecturerMessageAccess = async (courseId, user) => {
+    const course = await Course.findByPk(courseId);
+    if (!course) return { status: 404, message: "Course not found" };
+    if (user.role === "lecturer" && course.lecturerId === user.id) return { course, isManager: true };
+    if (user.role !== "student") return { status: 403, message: "Course messaging access denied" };
+    const enrollment = await Enrollment.findOne({ where: { courseId, studentId: user.id } });
+    if (!hasCoursePermission(enrollment, "messageLecturer")) {
+        return { status: 403, message: "Your lecturer has not enabled private course messages" };
+    }
+    return { course, enrollment, isManager: false };
+};
+
+const lecturerMessageStudentIds = async (courseId) => {
+    const enrollments = await Enrollment.findAll({ where: { courseId } });
+    return enrollments
+        .filter((enrollment) => hasCoursePermission(enrollment, "messageLecturer"))
+        .map((enrollment) => enrollment.studentId);
+};
+
+exports.listLecturerMessages = async (req, res) => {
+    const courseId = idValue(req.params.courseId);
+    if (!courseId) return res.status(400).json({ message: "Invalid course ID" });
+    const access = await lecturerMessageAccess(courseId, req.user);
+    if (access.status) return res.status(access.status).json({ message: access.message });
+    const permittedStudentIds = access.isManager ? await lecturerMessageStudentIds(courseId) : [];
+    if (access.isManager && !permittedStudentIds.length) {
+        return res.json({ messages: [], students: [] });
+    }
+    const where = access.isManager
+        ? {
+            courseId,
+            [Op.or]: [
+                { senderId: access.course.lecturerId, recipientId: { [Op.in]: permittedStudentIds } },
+                { recipientId: access.course.lecturerId, senderId: { [Op.in]: permittedStudentIds } }
+            ]
+        }
+        : {
+            courseId,
+            [Op.or]: [
+                { senderId: req.user.id, recipientId: access.course.lecturerId },
+                { senderId: access.course.lecturerId, recipientId: req.user.id }
+            ]
+        };
+    const messages = await Message.findAll({
+        where,
+        include: [
+            { model: User, as: "sender", attributes: ["id", "fullName", "role"] },
+            { model: User, as: "recipient", attributes: ["id", "fullName", "role"] }
+        ],
+        order: [["createdAt", "ASC"]]
+    });
+    if (!access.isManager) {
+        const readAt = new Date();
+        await Message.update({ readAt }, {
+            where: { courseId, senderId: access.course.lecturerId, recipientId: req.user.id, readAt: null }
+        });
+        messages.forEach((message) => {
+            if (message.senderId === access.course.lecturerId && !message.readAt) message.readAt = readAt;
+        });
+        return res.json(messages);
+    }
+    const enrollments = await Enrollment.findAll({
+        where: { courseId, studentId: { [Op.in]: permittedStudentIds } },
+        include: [{ model: User, as: "student", attributes: ["id", "fullName", "email"] }],
+        order: [[{ model: User, as: "student" }, "fullName", "ASC"]]
+    });
+    res.json({
+        messages,
+        students: enrollments.filter((item) => item.student).map((item) => item.student)
+    });
+};
+
+exports.sendLecturerMessage = async (req, res) => {
+    const courseId = idValue(req.params.courseId);
+    if (!courseId || !nonEmpty(req.body.body, 20000)) {
+        return res.status(400).json({ message: "A course and message body are required" });
+    }
+    const access = await lecturerMessageAccess(courseId, req.user);
+    if (access.status) return res.status(access.status).json({ message: access.message });
+    let recipientId;
+    if (access.isManager) {
+        recipientId = idValue(req.body.recipientId);
+        const enrollment = recipientId
+            ? await Enrollment.findOne({ where: { courseId, studentId: recipientId } })
+            : null;
+        if (!enrollment || !hasCoursePermission(enrollment, "messageLecturer")) {
+            return res.status(403).json({ message: "Choose a student who has lecturer messaging permission" });
+        }
+    } else {
+        recipientId = access.course.lecturerId;
+    }
     const message = await sequelize.transaction(async (transaction) => {
         const created = await Message.create({
             courseId,

@@ -25,6 +25,8 @@ router.post("/announcements/broadcast", requireRole("lecturer"), lmsController.b
 router.get("/courses/:courseId/conversations", requireRole("student"), lmsController.listConversations);
 router.get("/courses/:courseId/conversations/:userId", requireRole("student"), lmsController.listMessages);
 router.post("/courses/:courseId/messages", requireRole("student"), lmsController.sendMessage);
+router.get("/courses/:courseId/lecturer-messages", requireRole("lecturer", "student"), lmsController.listLecturerMessages);
+router.post("/courses/:courseId/lecturer-messages", requireRole("lecturer", "student"), lmsController.sendLecturerMessage);
 
 router.get("/notifications", lmsController.listNotifications);
 router.patch("/notifications/read-all", lmsController.markAllNotificationsRead);

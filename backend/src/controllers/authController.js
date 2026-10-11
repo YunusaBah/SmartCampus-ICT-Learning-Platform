@@ -209,7 +209,7 @@ exports.googleRegister = async (req, res) => {
 exports.googleLogin = async (req, res) => {
     try {
         const { credential, role } = req.body;
-        if (!["student", "lecturer"].includes(role)) {
+        if (role !== undefined && !["student", "lecturer"].includes(role)) {
             return res.status(400).json({ message: "Choose a valid account type" });
         }
 
@@ -226,9 +226,9 @@ exports.googleLogin = async (req, res) => {
                 ]
             }
         });
-        if (!user || user.role !== role ||
+        if (!user || (role && user.role !== role) ||
             (user.googleId && user.googleId !== googleAccount.googleId)) {
-            return res.status(401).json({ message: "No account was found for this Google email and account type" });
+            return res.status(401).json({ message: "No account was found for this Google email" });
         }
 
         if (!user.googleId) {

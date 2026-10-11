@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import API from "../services/api";
 import { downloadFile } from "../utils/downloadFile";
 import { useAuth } from "../hooks/useAuth";
 import AIAssistant from "../components/AIAssistant";
 import MaterialPreviewDialog from "../components/MaterialPreviewDialog";
+import CourseLecturerMessages from "../components/CourseLecturerMessages";
 import QuizGradingTables from "../components/QuizGradingTables";
 import QuestionImportDialog from "../components/QuestionImportDialog";
 import AnnouncementCard from "../components/AnnouncementCard";
@@ -42,9 +43,7 @@ const CourseDetail = () => {
     const [editingLessonId, setEditingLessonId] = useState(null);
     const [studentSearch, setStudentSearch] = useState("");
     const [studentSort, setStudentSort] = useState("name");
-    const [announcementRoleInputs, setAnnouncementRoleInputs] = useState({});
-    const [roleStudentId, setRoleStudentId] = useState("");
-    const [roleNameDraft, setRoleNameDraft] = useState("");
+    const [permissionDrafts, setPermissionDrafts] = useState({});
     const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
     const [announcementForm, setAnnouncementForm] = useState({ title: "", body: "" });
     const [eventForm, setEventForm] = useState({ eventType: "class", title: "", description: "", startsAt: "", endsAt: "" });
@@ -66,9 +65,18 @@ const CourseDetail = () => {
     const [routeSuccess] = useState(location.state?.successMessage || "");
     const [gradeInputs, setGradeInputs] = useState({});
     const [feedbackInputs, setFeedbackInputs] = useState({});
+    const [gradingSubmissionId, setGradingSubmissionId] = useState(null);
     const [previewLesson, setPreviewLesson] = useState(null);
 
-    const [lessonForm, setLessonForm] = useState({ title: "", content: "", videoUrl: "", file: null });
+    const [lessonForm, setLessonForm] = useState({ title: "", content: "", resourceUrl: "", file: null });
+    const lessonFileInput = useRef(null);
+    const coursePermissionOptions = [
+        ["uploadMaterials", "Upload course materials"],
+        ["createAssignments", "Create assignments"],
+        ["gradeAssignments", "Grade assignments"],
+        ["postAnnouncements", "Post announcements"],
+        ["messageLecturer", "Message lecturer"]
+    ];
     const [quizForm, setQuizForm] = useState({ question: "", optionA: "", optionB: "", optionC: "", optionD: "", correctAnswer: "A" });
     const [assignmentForm, setAssignmentForm] = useState({ title: "", description: "", dueDate: "", file: null });
     const [quizAnswers, setQuizAnswers] = useState({});
@@ -150,10 +158,10 @@ const CourseDetail = () => {
     }, [courseId, isStaff]);
 
     useEffect(() => {
-        if (data?.isLecturer && tab === "grading") {
+        if ((data?.isLecturer || data?.permissions?.includes("gradeAssignments")) && tab === "grading") {
             loadSubmissions();
         }
-    }, [data?.isLecturer, tab, loadSubmissions]);
+    }, [data?.isLecturer, data?.permissions, tab, loadSubmissions]);
 
     useEffect(() => {
         if (!data || isStaff) return;
@@ -184,7 +192,7 @@ const CourseDetail = () => {
         const formData = new FormData();
         formData.append("title", lessonForm.title);
         formData.append("content", lessonForm.content);
-        formData.append("videoUrl", lessonForm.videoUrl);
+        formData.append("videoUrl", lessonForm.resourceUrl);
         formData.append("courseId", courseId);
         if (lessonForm.moduleId) formData.append("moduleId", lessonForm.moduleId);
         if (lessonForm.file) formData.append("file", lessonForm.file);
@@ -194,7 +202,8 @@ const CourseDetail = () => {
             } else {
                 await API.post("/lessons", formData, { headers: { "Content-Type": "multipart/form-data" } });
             }
-            setLessonForm({ title: "", content: "", videoUrl: "", file: null });
+            setLessonForm({ title: "", content: "", resourceUrl: "", file: null });
+            if (lessonFileInput.current) lessonFileInput.current.value = "";
             setEditingLessonId(null);
             showAlert(editingLessonId ? "Course material updated!" : "Lesson uploaded!");
             loadCourse();
@@ -208,7 +217,7 @@ const CourseDetail = () => {
         setLessonForm({
             title: lesson.title,
             content: lesson.content || "",
-            videoUrl: lesson.videoUrl || "",
+            resourceUrl: lesson.videoUrl || "",
             moduleId: lesson.moduleId || "",
             file: null
         });
@@ -291,7 +300,7 @@ const CourseDetail = () => {
         const file = submitFiles[assignmentId];
         const answerText = (assignmentReplies[assignmentId] || "").trim();
         if (Date.now() > new Date(assignment.dueDate).getTime()) {
-            showAlert("You cannot submit after the due date. Ask your lecturer to reschedule or extend the deadline.", "error");
+            showAlert("Deadline passed. Contact your lecturer to request an extension.", "error");
             return;
         }
         if (!file && !answerText) {
@@ -329,19 +338,30 @@ const CourseDetail = () => {
     };
 
     const handleGrade = async (submissionId) => {
-        const grade = (gradeInputs[submissionId] || "").trim();
+        const submission = submissions.flatMap((assignment) => assignment.submissions || [])
+            .find((item) => item.id === submissionId);
+        const grade = (gradeInputs[submissionId] ?? (submission?.grade === "Pending" ? "" : submission?.grade || "")).trim();
         if (!grade) { showAlert("Enter a grade first", "error"); return; }
+        setGradingSubmissionId(submissionId);
         try {
-            await API.patch(`/assignments/submissions/${submissionId}/grade`, {
+            const response = await API.patch(`/assignments/submissions/${submissionId}/grade`, {
                 grade,
-                feedback: feedbackInputs[submissionId] || ""
+                feedback: feedbackInputs[submissionId] ?? submission?.feedback ?? ""
             });
+            const savedSubmission = response.data.submission;
+            setSubmissions((current) => current.map((assignment) => ({
+                ...assignment,
+                submissions: assignment.submissions?.map((item) =>
+                    item.id === submissionId ? { ...item, ...savedSubmission } : item
+                )
+            })));
+            setGradeInputs((previous) => ({ ...previous, [submissionId]: savedSubmission.grade }));
+            setFeedbackInputs((previous) => ({ ...previous, [submissionId]: savedSubmission.feedback || "" }));
             showAlert("Grade saved!");
-            setGradeInputs(prev => ({ ...prev, [submissionId]: "" }));
-            setFeedbackInputs(prev => ({ ...prev, [submissionId]: "" }));
-            loadSubmissions();
         } catch (err) {
             showAlert(err.response?.data?.message || "Grading failed", "error");
+        } finally {
+            setGradingSubmissionId(null);
         }
     };
 
@@ -430,16 +450,17 @@ const CourseDetail = () => {
         }
     };
 
-    const saveAnnouncementRole = async (student, canPostAnnouncements, requestedRoleName) => {
-        const roleName = (requestedRoleName ?? announcementRoleInputs[student.id] ?? student.announcementRoleName ?? "").trim();
-        if (canPostAnnouncements && !roleName) {
-            showAlert("Enter a role name such as Class Rep.", "error");
-            return;
-        }
+    const saveStudentPermissions = async (student, revoke = false) => {
+        const draft = permissionDrafts[student.id] || {
+            role: student.permissionRole || "",
+            permissions: student.permissions || []
+        };
+        const role = revoke ? null : draft.role || null;
+        const permissions = revoke || !role ? [] : draft.permissions;
         try {
-            const response = await API.patch(`/courses/${courseId}/students/${student.id}/announcement-permission`, {
-                canPostAnnouncements,
-                roleName: canPostAnnouncements ? roleName : null
+            const response = await API.patch(`/courses/${courseId}/students/${student.id}/permissions`, {
+                role,
+                permissions
             });
             setData((current) => ({
                 ...current,
@@ -447,15 +468,22 @@ const CourseDetail = () => {
                     ? {
                         ...item,
                         canPostAnnouncements: response.data.canPostAnnouncements,
-                        announcementRoleName: response.data.announcementRoleName
+                        announcementRoleName: response.data.announcementRoleName,
+                        permissionRole: response.data.permissionRole,
+                        permissions: response.data.permissions
                     }
                     : item)
             }));
-            showAlert(canPostAnnouncements
-                ? `${student.fullName} can post announcements as ${roleName}.`
-                : `${student.fullName}'s announcement permission was removed.`);
+            setPermissionDrafts((current) => {
+                const next = { ...current };
+                delete next[student.id];
+                return next;
+            });
+            showAlert(revoke
+                ? `${student.fullName}'s course role and permissions were revoked.`
+                : `${student.fullName}'s course role and permissions were saved.`);
         } catch (requestError) {
-            showAlert(requestError.response?.data?.message || "Unable to update announcement permission.", "error");
+            showAlert(requestError.response?.data?.message || "Unable to update course permissions.", "error");
         }
     };
 
@@ -631,10 +659,15 @@ const CourseDetail = () => {
 
     const { course, lessons, quizzes, assignments, students, classmates, isLecturer } = data;
     const showLecturer = isLecturer || isStaff;
+    const canUploadMaterials = showLecturer || data.permissions?.includes("uploadMaterials");
+    const canCreateAssignments = showLecturer || data.permissions?.includes("createAssignments");
+    const canGradeAssignments = showLecturer || data.permissions?.includes("gradeAssignments");
+    const canPostAnnouncements = showLecturer || data.permissions?.includes("postAnnouncements");
+    const canMessageLecturer = data.permissions?.includes("messageLecturer");
     const lessonContent = lessons.map(l => l.content).join(" ");
 
     if (tab === "settings" && showLecturer) {
-        return <Navigate to="/settings" replace state={{ courseId: Number(courseId) }} />;
+        return <Navigate to="/settings/courses" replace state={{ courseId: Number(courseId) }} />;
     }
 
     return (
@@ -690,8 +723,8 @@ const CourseDetail = () => {
                         <Link to="?section=quizzes"><FaQuestionCircle /> Quizzes</Link>
                         {showLecturer && <Link to="?section=students"><FaUsers /> Students</Link>}
                         <Link to="?section=announcements"><FaBullhorn /> Announcements</Link>
-                        {showLecturer && <Link to="?section=grading"><FaChartBar /> Grades</Link>}
-                        {showLecturer && <Link to="/settings" state={{ courseId: Number(courseId) }}><FaCog /> Course Settings</Link>}
+                        {canGradeAssignments && <Link to="?section=grading"><FaChartBar /> Grades</Link>}
+                        {showLecturer && <Link to="/settings/courses" state={{ courseId: Number(courseId) }}><FaCog /> Course Settings</Link>}
                     </div>
                     <div className="course-overview-panels">
                         <section className="course-overview-lecturer">
@@ -753,7 +786,10 @@ const CourseDetail = () => {
                                     <button className="btn btn-inline" type="submit">Add module</button>
                                 </form>
                             </details>
-                            <details className="feature-create-panel">
+                        </>
+                    )}
+                    {canUploadMaterials && (
+                        <details className="feature-create-panel">
                                 <summary>{editingLessonId ? "Edit course material" : "Upload course material"}</summary>
                                 <form className="feature-form-grid" onSubmit={handleCreateLesson}>
                                     <label>Lesson title<input value={lessonForm.title} onChange={e => setLessonForm({ ...lessonForm, title: e.target.value })} required /></label>
@@ -763,20 +799,23 @@ const CourseDetail = () => {
                                             {modules.map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}
                                         </select>
                                     </label>
-                                    <label className="feature-form-wide">Written content (optional if a file is attached)<textarea value={lessonForm.content} onChange={e => setLessonForm({ ...lessonForm, content: e.target.value })} /></label>
-                                    <label>Video URL (optional)<input value={lessonForm.videoUrl} onChange={e => setLessonForm({ ...lessonForm, videoUrl: e.target.value })} /></label>
-                                    <label>Resource file<input type="file" onChange={e => {
+                                    <label>Resource link (optional)<input type="url" maxLength={2048} placeholder="Paste a book, video, or learning platform URL" value={lessonForm.resourceUrl} onChange={e => setLessonForm({ ...lessonForm, resourceUrl: e.target.value })} /></label>
+                                    <label>Upload a file from your device<input type="file" ref={lessonFileInput} onChange={e => {
                                         const file = e.target.files?.[0];
                                         if (file) setLessonForm(prev => ({ ...prev, file }));
                                     }} /></label>
+                                    <details className="feature-form-wide">
+                                        <summary>Add written notes (optional)</summary>
+                                        <textarea value={lessonForm.content} onChange={e => setLessonForm({ ...lessonForm, content: e.target.value })} />
+                                    </details>
                                     <button type="submit" className="btn btn-inline">{editingLessonId ? "Save material" : "Upload material"}</button>
                                     {editingLessonId && <button type="button" className="btn btn-secondary" onClick={() => {
                                         setEditingLessonId(null);
-                                        setLessonForm({ title: "", content: "", videoUrl: "", file: null });
+                                        setLessonForm({ title: "", content: "", resourceUrl: "", file: null });
+                                        if (lessonFileInput.current) lessonFileInput.current.value = "";
                                     }}>Cancel edit</button>}
                                 </form>
-                            </details>
-                        </>
+                        </details>
                     )}
                     {!showLecturer && progress && (
                         <div className="course-progress-summary">
@@ -784,7 +823,7 @@ const CourseDetail = () => {
                             <div className="course-progress-track"><span style={{ width: `${progress.completionPercent}%` }} /></div>
                         </div>
                     )}
-                    {!lessons.length ? <div className="feature-empty"><FaBookOpen /><strong>No course materials yet</strong><span>Lessons uploaded by the lecturer will be organized here.</span></div> : (
+                    {!lessons.length ? <div className="feature-empty"><FaBookOpen /><strong>No course materials yet</strong></div> : (
                         <div className="course-curriculum">
                             {modules.map((module) => {
                                 const moduleLessons = lessons.filter((lesson) => lesson.moduleId === module.id);
@@ -798,8 +837,8 @@ const CourseDetail = () => {
                                                     <span className={completed ? "lesson-status complete" : "lesson-status"}><FaCheckCircle /></span>
                                                     <div><strong>{lesson.title}</strong>
                                                         {lesson.createdAt && <time className="course-material-date">Added {new Date(lesson.createdAt).toLocaleDateString()}</time>}
-                                                        <p>{lesson.content}</p>
-                                                        {lesson.videoUrl && <div className="lesson-resources"><a href={lesson.videoUrl} target="_blank" rel="noreferrer">Watch lesson video</a></div>}
+                                                        {lesson.content && <p>{lesson.content}</p>}
+                                                        {lesson.videoUrl && <div className="lesson-resources"><a href={lesson.videoUrl} target="_blank" rel="noreferrer">Open learning resource</a></div>}
                                                     </div>
                                                     {lesson.hasFile && <div className="lesson-file-actions">
                                                         <button type="button" onClick={() => handleDownload("lesson", lesson.id, lesson.fileName || `lesson-${lesson.id}`)}>Download</button>
@@ -829,8 +868,9 @@ const CourseDetail = () => {
                                             <span className={progress?.lessons?.some((item) => item.id === lesson.id && item.completed) ? "lesson-status complete" : "lesson-status"}><FaBookOpen /></span>
                                             <div><strong>{lesson.title}</strong>
                                                 {lesson.createdAt && <time className="course-material-date">Added {new Date(lesson.createdAt).toLocaleDateString()}</time>}
-                                                <p>{lesson.content}</p>
+                                                {lesson.content && <p>{lesson.content}</p>}
                                             </div>
+                                            {lesson.videoUrl && <div className="lesson-resources"><a href={lesson.videoUrl} target="_blank" rel="noreferrer">Open learning resource</a></div>}
                                             {lesson.hasFile && <div className="lesson-file-actions">
                                                 <button type="button" onClick={() => handleDownload("lesson", lesson.id, lesson.fileName || `lesson-${lesson.id}`)}>Download</button>
                                                 <button type="button" onClick={() => handleView(lesson.id, lesson.fileName || lesson.title)}>View</button>
@@ -1103,7 +1143,7 @@ const CourseDetail = () => {
             {/* ASSIGNMENTS */}
             {tab === "assignments" && (
                 <section>
-                    {showLecturer && (
+                    {canCreateAssignments && (
                         <form className="panel-form" onSubmit={handleCreateAssignment}>
                             <h3>Create Assignment</h3>
                             <input placeholder="Title" value={assignmentForm.title}
@@ -1167,9 +1207,7 @@ const CourseDetail = () => {
                                     <p className="assignment-feedback"><strong>Grade:</strong> {submission.grade}{submission.feedback ? ` · ${submission.feedback}` : ""}</p>
                                 )}
                                 {!showLecturer && !submission && late && (
-                                    <p className="assignment-deadline-error" role="status">
-                                        You cannot submit after the due date. Ask your lecturer to reschedule or extend the deadline.
-                                    </p>
+                                    <p className="assignment-deadline-error" role="status">Deadline passed. Contact your lecturer to request an extension.</p>
                                 )}
                                 {!showLecturer && (
                                     <>
@@ -1245,7 +1283,8 @@ const CourseDetail = () => {
                                         <th scope="col">Mat. number</th>
                                         <th scope="col">Email</th>
                                         <th scope="col">Enrolled</th>
-                                        <th scope="col">Announcement posting</th>
+                                        <th scope="col">Role</th>
+                                        <th scope="col">Permissions</th>
                                         <th scope="col">Action</th>
                                     </tr>
                                 </thead>
@@ -1258,27 +1297,72 @@ const CourseDetail = () => {
                                             <td><a href={`mailto:${student.email}`}>{student.email}</a></td>
                                             <td>{student.enrolledAt ? new Date(student.enrolledAt).toLocaleDateString() : "—"}</td>
                                             <td className="student-announcement-role-cell">
-                                                <input
-                                                    type="text"
-                                                    maxLength={80}
-                                                    aria-label={`Announcement role for ${student.fullName}`}
-                                                    placeholder="Role name (e.g. Class Rep)"
-                                                    value={announcementRoleInputs[student.id] ?? student.announcementRoleName ?? ""}
-                                                    onChange={(event) => setAnnouncementRoleInputs((current) => ({
+                                                <select
+                                                    aria-label={`Course role for ${student.fullName}`}
+                                                    value={(permissionDrafts[student.id]?.role ?? student.permissionRole) || ""}
+                                                    onChange={(event) => setPermissionDrafts((current) => ({
                                                         ...current,
-                                                        [student.id]: event.target.value
+                                                        [student.id]: {
+                                                            role: event.target.value,
+                                                            permissions: event.target.value
+                                                                ? current[student.id]?.permissions || student.permissions || []
+                                                                : []
+                                                        }
                                                     }))}
-                                                />
-                                                <div>
-                                                    <button type="button" className="course-student-remove" onClick={() => saveAnnouncementRole(student, true)}>
-                                                        {student.canPostAnnouncements ? "Save role" : "Allow"}
-                                                    </button>
-                                                    {student.canPostAnnouncements && (
-                                                        <button type="button" className="course-student-remove" onClick={() => saveAnnouncementRole(student, false)}>
-                                                            Revoke
-                                                        </button>
-                                                    )}
-                                                </div>
+                                                >
+                                                    <option value="" disabled>Choose a role</option>
+                                                    <option value="student_assistant">Student Assistant</option>
+                                                    <option value="class_representative">Class Representative</option>
+                                                </select>
+                                            </td>
+                                            <td className="student-announcement-role-cell">
+                                                {(() => {
+                                                    const selected = permissionDrafts[student.id]?.permissions || student.permissions || [];
+                                                    const allSelected = coursePermissionOptions.every(([key]) => selected.includes(key));
+                                                    const updatePermissions = (nextPermissions) => setPermissionDrafts((current) => ({
+                                                        ...current,
+                                                        [student.id]: {
+                                                            role: current[student.id]?.role ?? student.permissionRole ?? "",
+                                                            permissions: nextPermissions
+                                                        }
+                                                    }));
+                                                    return (
+                                                        <>
+                                                            <details>
+                                                                <summary>{allSelected ? "All permissions" : `${selected.length} selected`}</summary>
+                                                                <label>
+                                                                    <input type="checkbox" disabled={!(permissionDrafts[student.id]?.role ?? student.permissionRole)} checked={allSelected} onChange={(event) => updatePermissions(
+                                                                        event.target.checked ? coursePermissionOptions.map(([key]) => key) : []
+                                                                    )} />
+                                                                    All
+                                                                </label>
+                                                                {coursePermissionOptions.map(([key, label]) => (
+                                                                    <label key={key}>
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            disabled={!(permissionDrafts[student.id]?.role ?? student.permissionRole)}
+                                                                            checked={selected.includes(key)}
+                                                                            onChange={(event) => updatePermissions(event.target.checked
+                                                                                ? [...new Set([...selected, key])]
+                                                                                : selected.filter((permission) => permission !== key))}
+                                                                        />
+                                                                        {label}
+                                                                    </label>
+                                                                ))}
+                                                            </details>
+                                                            <div>
+                                                                <button type="button" className="course-student-remove" onClick={() => saveStudentPermissions(student)}>
+                                                                    Save
+                                                                </button>
+                                                                {(student.permissionRole || student.permissions?.length) && (
+                                                                    <button type="button" className="course-student-remove" onClick={() => saveStudentPermissions(student, true)}>
+                                                                        Revoke role
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
                                             </td>
                                             <td>
                                                 <button type="button" className="course-student-remove" onClick={() => removeEnrolledStudent(student)}>
@@ -1297,9 +1381,9 @@ const CourseDetail = () => {
             )}
 
             {/* GRADING */}
-            {tab === "grading" && showLecturer && (
+            {tab === "grading" && canGradeAssignments && (
                 <section>
-                    <Link className="course-content-file" to="?section=gradebook">Open gradebook</Link>
+                    {showLecturer && <Link className="course-content-file" to="?section=gradebook">Open gradebook</Link>}
                     <h2 style={{ marginBottom: 16, color: "var(--theme-accent)" }}>Grade Submissions</h2>
                     {submissions.length === 0 && (
                         <p style={{ color: "var(--theme-muted)" }}>No submissions yet.</p>
@@ -1313,10 +1397,10 @@ const CourseDetail = () => {
                                         <th scope="col">Student</th>
                                         <th scope="col">Submitted</th>
                                         <th scope="col">Status</th>
-                                        <th scope="col">Grade</th>
+                                        <th scope="col" className="grading-mark-column">Grade</th>
                                         <th scope="col">Feedback</th>
                                         <th scope="col">File</th>
-                                        <th scope="col">Action</th>
+                                        <th scope="col" className="grading-action-column">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1344,12 +1428,13 @@ const CourseDetail = () => {
                                                 <td><span className={submission.grade === "Pending" ? "grading-status pending" : "grading-status graded"}>
                                                     {submission.grade === "Pending" ? "Needs grading" : "Graded"}
                                                 </span></td>
-                                                <td>
+                                                <td className="grading-mark-column">
                                                     <input
                                                         className="grading-grade-input"
                                                         aria-label={`Grade for ${submission.student?.fullName || "student"} on ${assignment.title}`}
-                                                        placeholder={submission.grade === "Pending" ? "Enter grade" : submission.grade}
-                                                        value={gradeInputs[submission.id] || ""}
+                                                        placeholder="Mark"
+                                                        value={gradeInputs[submission.id] ?? (submission.grade === "Pending" ? "" : submission.grade)}
+                                                        disabled={gradingSubmissionId === submission.id}
                                                         onChange={(event) => setGradeInputs((previous) => ({
                                                             ...previous,
                                                             [submission.id]: event.target.value
@@ -1361,7 +1446,8 @@ const CourseDetail = () => {
                                                         className="grading-feedback-input"
                                                         aria-label={`Feedback for ${submission.student?.fullName || "student"}`}
                                                         placeholder="Optional feedback"
-                                                        value={feedbackInputs[submission.id] || ""}
+                                                        value={feedbackInputs[submission.id] ?? submission.feedback ?? ""}
+                                                        disabled={gradingSubmissionId === submission.id}
                                                         onChange={(event) => setFeedbackInputs((previous) => ({
                                                             ...previous,
                                                             [submission.id]: event.target.value
@@ -1382,8 +1468,10 @@ const CourseDetail = () => {
                                                     </div>
                                                     : !submission.answerText && "No file or reply"}
                                                 </td>
-                                                <td>
-                                                    <button type="button" className="grading-save-button" onClick={() => handleGrade(submission.id)}>Save grade</button>
+                                                <td className="grading-action-column">
+                                                    <button type="button" className="grading-save-button" disabled={gradingSubmissionId === submission.id} onClick={() => handleGrade(submission.id)}>
+                                                        {gradingSubmissionId === submission.id ? "Saving..." : "Save"}
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ));
@@ -1392,66 +1480,13 @@ const CourseDetail = () => {
                             </table>
                         </div>
                     )}
-                    <QuizGradingTables gradebook={gradebook} />
+                    {showLecturer && <QuizGradingTables gradebook={gradebook} />}
                 </section>
             )}
 
             {tab === "announcements" && (
                 <section className="course-feature-section">
-                    {showLecturer && (
-                        <details className="feature-create-panel">
-                            <summary>Assign announcement publishing role</summary>
-                            <div className="feature-form-grid">
-                                <label>Available students
-                                    <select
-                                        value={roleStudentId}
-                                        onChange={(event) => {
-                                            const nextId = event.target.value;
-                                            const selected = students.find((student) => String(student.id) === nextId);
-                                            setRoleStudentId(nextId);
-                                            setRoleNameDraft(selected?.announcementRoleName || "");
-                                        }}
-                                    >
-                                        <option value="">Choose a student</option>
-                                        {students.map((student) => (
-                                            <option key={student.id} value={student.id}>
-                                                {student.fullName}{student.announcementRoleName ? ` · ${student.announcementRoleName}` : ""}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <label>Role name
-                                    <input
-                                        maxLength={80}
-                                        value={roleNameDraft}
-                                        onChange={(event) => setRoleNameDraft(event.target.value)}
-                                        placeholder="For example, Class Rep"
-                                    />
-                                </label>
-                                {(() => {
-                                    const selectedStudent = students.find((student) => String(student.id) === roleStudentId);
-                                    return selectedStudent ? (
-                                        <div className="feature-form-wide">
-                                            <button type="button" className="btn btn-inline" onClick={() => saveAnnouncementRole(
-                                                selectedStudent,
-                                                true,
-                                                roleNameDraft
-                                            )}>
-                                                {selectedStudent.canPostAnnouncements ? "Save role" : "Allow this student to post"}
-                                            </button>
-                                            {selectedStudent.canPostAnnouncements && (
-                                                <button type="button" className="btn btn-secondary" onClick={() => saveAnnouncementRole(selectedStudent, false)}>
-                                                    Revoke role
-                                                </button>
-                                            )}
-                                        </div>
-                                    ) : null;
-                                })()}
-                                {!students.length && <p className="feature-status">Enroll students in this course before assigning a role.</p>}
-                            </div>
-                        </details>
-                    )}
-                    {(showLecturer || data.canPostAnnouncements) && (
+                    {(showLecturer || canPostAnnouncements) && (
                         <form className="feature-create-panel feature-form-grid" onSubmit={createAnnouncement}>
                             <h2 className="feature-form-wide">{editingAnnouncementId ? "Edit announcement" : "Publish a course announcement"}</h2>
                             <label>Title<input required value={announcementForm.title} onChange={(event) => setAnnouncementForm({ ...announcementForm, title: event.target.value })} /></label>
@@ -1464,7 +1499,7 @@ const CourseDetail = () => {
                         </form>
                     )}
                     {announcements.length === 0
-                        ? <div className="feature-empty"><strong>No announcements yet</strong><span>Course announcements will appear here.</span></div>
+                        ? <div className="feature-empty"><strong>No announcements yet</strong></div>
                         : <div className="course-feature-list announcement-list">{announcements.map((announcement) => (
                             <AnnouncementCard key={announcement.id} announcement={announcement} isStaff={showLecturer} actions={showLecturer && <div className="course-material-actions">
                                     <button type="button" onClick={() => {
@@ -1475,6 +1510,12 @@ const CourseDetail = () => {
                                     <button type="button" onClick={() => removeAnnouncement(announcement)}>Delete</button>
                                 </div>} />
                         ))}</div>}
+                    <CourseLecturerMessages
+                        key={`lecturer-inbox-${courseId}-${canMessageLecturer}`}
+                        courseId={Number(courseId)}
+                        isLecturer={showLecturer}
+                        canMessageLecturer={canMessageLecturer}
+                    />
                 </section>
             )}
 
@@ -1494,7 +1535,7 @@ const CourseDetail = () => {
                         </form>
                     )}
                     {calendarEvents.length === 0
-                        ? <div className="feature-empty"><FaClock /><strong>No course events scheduled</strong><span>Assignment due dates and course events will appear here.</span></div>
+                        ? <div className="feature-empty"><FaClock /><strong>No course events scheduled</strong></div>
                         : <div className="course-feature-list">{calendarEvents.map((event) => (
                             <article className="course-feature-card calendar-course-event" key={event.id}>
                                 <span className="course-event-type">{event.eventType}</span>
@@ -1517,7 +1558,7 @@ const CourseDetail = () => {
                         </div>
                     )}
                     {!gradebook?.students?.length
-                        ? <div className="feature-empty"><strong>No enrolled students</strong><span>Student grades will appear when learners join the course.</span></div>
+                        ? <div className="feature-empty"><strong>No enrolled students</strong></div>
                         : <div className="course-gradebook-scroll"><table className="course-gradebook">
                             <thead><tr>
                                 <th>Student</th>

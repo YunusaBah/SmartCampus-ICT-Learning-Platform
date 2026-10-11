@@ -166,9 +166,6 @@ const Calendar = () => {
                 <div>
                     <p className="eyebrow">PLAN YOUR LEARNING</p>
                     <h1>Calendar</h1>
-                    <p className="subtitle">{isStaff
-                        ? "Schedule course events, assignments, and assessment dates."
-                        : "View course schedules, deadlines, and assessment dates."}</p>
                 </div>
                 <span className="grades-header-icon"><FaCalendarAlt /></span>
             </header>

@@ -175,7 +175,6 @@ const QuestionImportDialog = ({ onClose, onImport }) => {
                 </button>
                 <h2 id="question-import-heading">{result ? "Import Preview" : "Import Questions from a Document"}</h2>
                 {!result && <>
-                    <p className="course-modal-intro">Upload an existing examination paper, question bank, lecture note, or other supported document. SmartCampus will identify questions and organize them for review before adding them to your quiz.</p>
                     <div
                         className={dragging ? "question-import-dropzone dragging" : "question-import-dropzone"}
                         onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
@@ -218,7 +217,7 @@ const QuestionImportDialog = ({ onClose, onImport }) => {
                     </div>
                 </>}
                 {result && <>
-                    <p className="course-modal-intro">Select and review extracted questions. Correct answers are never guessed; questions without an answer key need lecturer review.</p>
+                    <p className="course-modal-intro">Review extracted questions and answer keys before importing.</p>
                     <div className="question-import-summary">
                         <span>{questions.length} questions detected</span>
                         <span>{mcqCount} MCQ</span>

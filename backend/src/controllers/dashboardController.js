@@ -10,6 +10,7 @@ const QuizAttempt = require("../models/QuizAttempt");
 const Lesson = require("../models/Lesson");
 const Announcement = require("../models/Announcement");
 const User = require("../models/User");
+const { normalizePermissions } = require("../utils/coursePermissions");
 
 const mapGroupedCounts = (rows) => new Map(rows.map((row) => [
     Number(row.courseId),
@@ -245,12 +246,12 @@ exports.getDashboard = async (req, res) => {
         const [enrollments, myCourses] = await Promise.all([
             Enrollment.findAll({
                 where: { studentId: req.user.id },
-                attributes: ["courseId"],
+                attributes: ["courseId", "permissionRole", "permissions", "canPostAnnouncements"],
                 include: [{
                     model: Course,
                     as: "course",
                     attributes: ["id", "title", "description", "classCode", "createdAt"],
-                    include: [{ model: User, as: "lecturer", attributes: ["fullName"] }]
+                    include: [{ model: User, as: "lecturer", attributes: ["fullName", "email"] }]
                 }],
                 order: [["createdAt", "DESC"]]
             }),
@@ -342,8 +343,20 @@ exports.getDashboard = async (req, res) => {
                 description: course.description,
                 courseCode: course.classCode,
                 lecturerName: course.lecturer?.fullName || "Lecturer",
+                lecturerEmail: course.lecturer?.email || null,
                 pendingAssignments: assignmentsByCourse.get(course.id) || 0
             })),
+            delegatedPermissions: enrollments
+                .filter((enrollment) => enrollment.permissionRole || normalizePermissions(
+                    enrollment.permissions,
+                    enrollment.canPostAnnouncements
+                ).length)
+                .map((enrollment) => ({
+                    courseId: enrollment.courseId,
+                    courseTitle: enrollment.course?.title || "Course",
+                    role: enrollment.permissionRole,
+                    permissions: normalizePermissions(enrollment.permissions, enrollment.canPostAnnouncements)
+                })),
             upcomingActivities: [
                 ...pendingAssignments.slice(0, 6).map((assignment) => ({
                     id: `assignment-${assignment.id}`,

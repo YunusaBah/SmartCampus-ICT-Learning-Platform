@@ -24,6 +24,7 @@ import Certificates from "./pages/Certificates";
 import Todos from "./pages/Todos";
 import Materials from "./pages/Materials";
 import Quizzes from "./pages/Quizzes";
+import { readDefaultPage, readReducedMotion } from "./utils/settingsPreferences";
 
 import "./styles/global.css";
 
@@ -64,6 +65,10 @@ function App() {
     }, [accountId, textSize]);
 
     useEffect(() => {
+        document.documentElement.dataset.reducedMotion = String(readReducedMotion(accountId));
+    }, [accountId]);
+
+    useEffect(() => {
         const syncAccountTheme = () => {
             const nextAccountId = readAccountId();
             setAccountId(nextAccountId);
@@ -82,11 +87,6 @@ function App() {
             window.removeEventListener("smartcampus:text-size-changed", syncAccountTheme);
             window.removeEventListener("storage", syncOtherTab);
         };
-    }, []);
-
-    useEffect(() => {
-        document.documentElement.dataset.reducedMotion =
-            localStorage.getItem("reducedMotion") === "true" ? "true" : "false";
     }, []);
 
     return (
@@ -110,7 +110,7 @@ function App() {
                             />
                         }
                     >
-                        <Route index element={<Navigate to="dashboard" replace />} />
+                        <Route index element={<Navigate to={readDefaultPage(accountId)} replace />} />
                         <Route path="dashboard" element={<Dashboard />} />
                         <Route path="courses" element={<Courses />} />
                         <Route path="materials" element={<Materials />} />
@@ -165,6 +165,32 @@ function App() {
                             </RoleRoute>
                         } />
                         <Route path="settings" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/profile" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/profile/name" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/profile/email" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/profile/picture" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/profile/student-id" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/profile/phone" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/security" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/security/password" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/preferences" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/preferences/appearance" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/preferences/text-size" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/preferences/motion" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/preferences/home-page" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/preferences/notifications" element={<Settings theme={theme} setTheme={setTheme} />} />
+                        <Route path="settings/courses" element={
+                            <RoleRoute roles={["lecturer"]}>
+                                <Settings theme={theme} setTheme={setTheme} />
+                            </RoleRoute>
+                        } />
+                        {["name", "code", "category", "description", "status", "enrollment", "start", "end", "class-code"].map((section) => (
+                            <Route key={section} path={`settings/courses/${section}`} element={
+                                <RoleRoute roles={["lecturer"]}>
+                                    <Settings theme={theme} setTheme={setTheme} />
+                                </RoleRoute>
+                            } />
+                        ))}
                     </Route>
                 </Route>
 

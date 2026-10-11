@@ -92,13 +92,12 @@ const Messages = () => {
                 <div>
                     <p className="eyebrow">COURSE COMMUNICATION</p>
                     <h1>Messages</h1>
-                    <p className="subtitle">Message classmates enrolled in the same course as you.</p>
                 </div>
                 <span className="grades-header-icon"><FaCommentDots /></span>
             </header>
             {error && <div className="dashboard-alert" role="alert">{error}</div>}
             {loading ? <p className="dashboard-loading" role="status">Loading classmates...</p> : !courses.length ? (
-                <div className="feature-empty"><FaCommentDots /><strong>No classes yet</strong><span>Join a class to message your classmates.</span></div>
+                <div className="feature-empty"><FaCommentDots /><strong>No classes yet</strong></div>
             ) : (
                 <>
                     <label className="messages-course-select">Class
@@ -132,7 +131,7 @@ const Messages = () => {
                                         <p>{message.body}</p>
                                         <time>{new Date(message.createdAt).toLocaleString()}</time>
                                     </article>
-                                )) : <div className="messenger-empty">Select a classmate to view your messages.</div>}
+                                )) : <div className="messenger-empty">No messages.</div>}
                             </div>
                             <form className="chat-compose" onSubmit={sendMessage}>
                                 <label className="sr-only" htmlFor="chat-message">Write a message</label>

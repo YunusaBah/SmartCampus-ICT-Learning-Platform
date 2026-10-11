@@ -1,5 +1,6 @@
 const Lesson = require("../models/Lesson");
 const Course = require("../models/Course");
+const Enrollment = require("../models/Enrollment");
 const User = require("../models/User");
 const getCourseAccess = require("../utils/courseAccess");
 const discardUpload = require("../utils/discardUpload");
@@ -10,10 +11,22 @@ const fs = require("fs/promises");
 const path = require("path");
 const uploadsDirectory = require("../utils/uploadsDirectory");
 const validateMaterialFile = require("../utils/validateMaterialFile");
+const { hasCoursePermission } = require("../utils/coursePermissions");
+
+const isValidResourceUrl = (value) => {
+    if (typeof value !== "string" || value.length > 2048) return false;
+    try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+        return false;
+    }
+};
 
 const toMaterialResponse = (lesson) => {
     const data = lesson.toJSON();
     data.hasFile = Boolean(data.fileUrl);
+    if (data.videoUrl && !isValidResourceUrl(data.videoUrl)) data.videoUrl = null;
     delete data.fileUrl;
     return data;
 };
@@ -22,12 +35,21 @@ exports.createLesson = async (req, res) => {
     try {
         const { title, content, videoUrl, courseId, moduleId, orderIndex } = req.body;
 
+        const resourceUrl = typeof videoUrl === "string" ? videoUrl.trim() : "";
         if (typeof title !== "string" || !title.trim() ||
-            (typeof content !== "string" || !content.trim()) && !req.file ||
+            (typeof content !== "undefined" && typeof content !== "string") ||
+            (videoUrl !== undefined && typeof videoUrl !== "string") ||
+            (!resourceUrl && (typeof content !== "string" || !content.trim()) && !req.file) ||
             !Number.isSafeInteger(Number(courseId)) || Number(courseId) <= 0 ||
             (orderIndex !== undefined && (!Number.isInteger(orderIndex) || orderIndex < 0))) {
             await discardUpload(req.file);
-            return res.status(400).json({ message: "Title, content, and courseId are required" });
+            return res.status(400).json({ message: videoUrl !== undefined && typeof videoUrl !== "string"
+                ? "Resource link must be text"
+                : "Add a file, resource link, or written content" });
+        }
+        if (resourceUrl && !isValidResourceUrl(resourceUrl)) {
+            await discardUpload(req.file);
+            return res.status(400).json({ message: "Resource link must be a valid HTTP or HTTPS URL" });
         }
 
         const course = await Course.findByPk(courseId);
@@ -35,9 +57,25 @@ exports.createLesson = async (req, res) => {
             await discardUpload(req.file);
             return res.status(404).json({ message: "Course not found" });
         }
-        if (course.lecturerId !== req.user.id) {
+        const isLecturer = course.lecturerId === req.user.id && req.user.role === "lecturer";
+        if (req.user.role === "lecturer" && !isLecturer) {
             await discardUpload(req.file);
             return res.status(403).json({ message: "You can only add lessons to your courses" });
+        }
+        if (!isLecturer) {
+            const enrollment = req.user.role === "student"
+                ? await Enrollment.findOne({
+                    where: { studentId: req.user.id, courseId: course.id }
+                })
+                : null;
+            if (!hasCoursePermission(enrollment, "uploadMaterials")) {
+                await discardUpload(req.file);
+                return res.status(403).json({ message: "Your lecturer has not granted course material upload permission" });
+            }
+        }
+        if (req.user.role !== "lecturer" && req.user.role !== "student") {
+            await discardUpload(req.file);
+            return res.status(403).json({ message: "Course material upload access denied" });
         }
         if (typeof title !== "string" || title.trim().length > 255 ||
             (content !== undefined && typeof content !== "string") ||
@@ -125,16 +163,26 @@ exports.updateLesson = async (req, res) => {
         }
         if (req.body.content !== undefined) {
             if (typeof req.body.content !== "string" || req.body.content.trim().length > 60000 ||
-                (!req.body.content.trim() && !req.file && !lesson.fileUrl)) {
+                (!req.body.content.trim() && !req.file && !lesson.fileUrl &&
+                    !(typeof req.body.videoUrl === "string" ? req.body.videoUrl.trim() : lesson.videoUrl))) {
                 await discardUpload(req.file);
-                return res.status(400).json({ message: "Written content or a material file is required" });
+                return res.status(400).json({ message: "Add a file, resource link, or written content" });
             }
             updates.content = req.body.content.trim();
         }
         if (req.body.videoUrl !== undefined) {
             if (typeof req.body.videoUrl !== "string") {
                 await discardUpload(req.file);
-                return res.status(400).json({ message: "Video URL must be text" });
+                return res.status(400).json({ message: "Resource link must be text" });
+            }
+            if (req.body.videoUrl.trim() && !isValidResourceUrl(req.body.videoUrl.trim())) {
+                await discardUpload(req.file);
+                return res.status(400).json({ message: "Resource link must be a valid HTTP or HTTPS URL" });
+            }
+            if (!req.body.videoUrl.trim() && !req.file && !lesson.fileUrl &&
+                !(typeof req.body.content === "string" ? req.body.content.trim() : lesson.content?.trim())) {
+                await discardUpload(req.file);
+                return res.status(400).json({ message: "Add a file, resource link, or written content" });
             }
             updates.videoUrl = req.body.videoUrl.trim() || null;
         }

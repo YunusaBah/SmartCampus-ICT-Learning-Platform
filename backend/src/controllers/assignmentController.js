@@ -11,6 +11,7 @@ const discardUpload = require("../utils/discardUpload");
 const { sequelize } = require("../config/db");
 const createNotifications = require("../utils/createNotifications");
 const validateMaterialFile = require("../utils/validateMaterialFile");
+const { hasCoursePermission, normalizePermissions } = require("../utils/coursePermissions");
 
 const assignmentDeadline = (value) => {
     const parsed = new Date(value);
@@ -40,9 +41,13 @@ exports.createAssignment = async (req, res) => {
             await discardUpload(req.file);
             return res.status(404).json({ message: "Course not found" });
         }
-        if (course.lecturerId !== req.user.id) {
+        const isManager = req.user.role === "lecturer" && course.lecturerId === req.user.id;
+        const enrollment = req.user.role === "student"
+            ? await Enrollment.findOne({ where: { studentId: req.user.id, courseId: course.id } })
+            : null;
+        if (!isManager && !hasCoursePermission(enrollment, "createAssignments")) {
             await discardUpload(req.file);
-            return res.status(403).json({ message: "You can only add assignments to your courses" });
+            return res.status(403).json({ message: "Your lecturer has not granted assignment creation permission" });
         }
 
         const assignment = await sequelize.transaction(async (transaction) => {
@@ -154,7 +159,7 @@ exports.getMyAssignments = async (req, res) => {
     try {
         const enrollments = await Enrollment.findAll({
             where: { studentId: req.user.id },
-            attributes: ["courseId"]
+            attributes: ["courseId", "permissionRole", "permissions", "canPostAnnouncements"]
         });
 
         const courseIds = enrollments.map((e) => e.courseId);
@@ -169,7 +174,8 @@ exports.getMyAssignments = async (req, res) => {
                 {
                     model: Course,
                     as: "course",
-                    attributes: ["id", "title"]
+                    attributes: ["id", "title"],
+                    include: [{ model: User, as: "lecturer", attributes: ["email"] }]
                 },
                 {
                     model: Submission,
@@ -189,7 +195,22 @@ exports.getMyAssignments = async (req, res) => {
             order: [["dueDate", "ASC"]]
         });
 
-        res.json(assignments);
+        const permissionsByCourse = new Map(enrollments.map((enrollment) => [
+            enrollment.courseId,
+            {
+                permissionRole: enrollment.permissionRole,
+                permissions: normalizePermissions(enrollment.permissions, enrollment.canPostAnnouncements)
+            }
+        ]));
+        res.json(assignments.map((assignment) => {
+            const data = assignment.toJSON();
+            if (data.course) {
+                Object.assign(data.course, permissionsByCourse.get(data.course.id));
+                data.course.lecturerEmail = data.course.lecturer?.email || null;
+                delete data.course.lecturer;
+            }
+            return data;
+        }));
 
     } catch (error) {
         console.error("Failed to load student assignments:", error);
@@ -218,8 +239,12 @@ exports.getCourseSubmissions = async (req, res) => {
         if (!course) {
             return res.status(404).json({ message: "Course not found" });
         }
-        if (course.lecturerId !== req.user.id) {
-            return res.status(403).json({ message: "Access denied" });
+        const isManager = req.user.role === "lecturer" && course.lecturerId === req.user.id;
+        const enrollment = req.user.role === "student"
+            ? await Enrollment.findOne({ where: { studentId: req.user.id, courseId: course.id } })
+            : null;
+        if (!isManager && !hasCoursePermission(enrollment, "gradeAssignments")) {
+            return res.status(403).json({ message: "Your lecturer has not granted assignment grading permission" });
         }
 
         const assignments = await Assignment.findAll({
@@ -275,8 +300,15 @@ exports.gradeSubmission = async (req, res) => {
             return res.status(404).json({ message: "Course not found" });
         }
 
-        if (course.lecturerId !== req.user.id) {
-            return res.status(403).json({ message: "Access denied" });
+        const isManager = req.user.role === "lecturer" && course.lecturerId === req.user.id;
+        const enrollment = req.user.role === "student"
+            ? await Enrollment.findOne({ where: { studentId: req.user.id, courseId: course.id } })
+            : null;
+        if (!isManager && !hasCoursePermission(enrollment, "gradeAssignments")) {
+            return res.status(403).json({ message: "Your lecturer has not granted assignment grading permission" });
+        }
+        if (!isManager && submission.studentId === req.user.id) {
+            return res.status(403).json({ message: "You cannot grade your own assignment submission" });
         }
 
         const oldValues = {

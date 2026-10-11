@@ -10,7 +10,7 @@ const lmsController = require("../controllers/lmsController");
 router.post(
     "/",
     authMiddleware,
-    requireRole("lecturer"),
+    requireRole("lecturer", "student"),
     upload.single("file"),
     lessonController.createLesson
 );

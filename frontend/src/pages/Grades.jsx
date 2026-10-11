@@ -106,7 +106,6 @@ const Grades = () => {
                 <div>
                     <p className="eyebrow">YOUR PERFORMANCE</p>
                     <h1>Grades</h1>
-                    <p className="subtitle">Review quiz results and feedback on your submitted work.</p>
                 </div>
                 <span className="grades-header-icon" aria-hidden="true"><FaChartLine /></span>
             </header>
@@ -200,7 +199,6 @@ const Grades = () => {
                     <div className="grade-empty">
                         <FaClipboardCheck aria-hidden="true" />
                         <strong>No quiz attempts yet</strong>
-                        <span>Your quiz results will appear here after you submit an answer.</span>
                     </div>
                 )}
                 {showPagination("quizPage", data.pagination.quizPage, data.pagination.quizPages)}
@@ -246,7 +244,6 @@ const Grades = () => {
                     <div className="grade-empty">
                         <FaClipboardCheck aria-hidden="true" />
                         <strong>No timed assessments submitted</strong>
-                        <span>Assessment scores and lecturer grades will appear here.</span>
                     </div>
                 )}
                 {showPagination("assessmentPage", data.pagination.assessmentPage, data.pagination.assessmentPages)}
@@ -288,7 +285,6 @@ const Grades = () => {
                     <div className="grade-empty">
                         <FaClipboardCheck aria-hidden="true" />
                         <strong>No assignments submitted</strong>
-                        <span>Assignment grades and lecturer feedback will be listed here.</span>
                     </div>
                 )}
                 {showPagination("submissionPage", data.pagination.submissionPage, data.pagination.submissionPages)}

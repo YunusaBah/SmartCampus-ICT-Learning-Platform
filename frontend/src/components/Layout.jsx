@@ -28,7 +28,7 @@ const Layout = ({ open, toggle, onClose, theme, toggleTheme }) => {
             <Navbar toggle={toggle} theme={theme} toggleTheme={toggleTheme} />
             {(!online || apiUnavailable) && (
                 <div className="offline-banner" role="status">
-                    Offline mode: showing data saved on this device. Reconnect to join classes or make changes.
+                    Offline: saved data only. Reconnect to make changes.
                 </div>
             )}
 

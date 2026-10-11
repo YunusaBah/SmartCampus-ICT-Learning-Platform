@@ -58,7 +58,6 @@ const Todos = () => {
                 <div>
                     <p className="eyebrow">YOUR COURSEWORK</p>
                     <h1>To-do list</h1>
-                    <p className="subtitle">Track assignments by their current status.</p>
                 </div>
                 <span className="grades-header-icon"><FaClipboardList /></span>
             </header>
@@ -69,7 +68,6 @@ const Todos = () => {
                 <div className="feature-empty">
                     <FaClipboardList />
                     <strong>{activeStatus ? `No ${activeStatus} assignments` : "No assignments yet"}</strong>
-                    <span>Assignments will appear here when a course lecturer shares them.</span>
                 </div>
             ) : (
                 <section className={activeStatus ? "todo-board single-column" : "todo-board"} aria-label="Assignments by status">

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import API from "../services/api";
-import API_BASE from "../config";
 import Register from "./Register";
 import GoogleSignInButton from "../components/GoogleSignInButton";
+import { readDefaultPage } from "../utils/settingsPreferences";
 
 const readResetTokenFromHash = () =>
     new URLSearchParams(window.location.hash.slice(1)).get("resetToken") || "";
@@ -17,10 +17,9 @@ const Login = () => {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [resetToken, setResetToken] = useState(readResetTokenFromHash);
-    const [loginOpen, setLoginOpen] = useState(() => Boolean(resetToken));
+    const [loginOpen, setLoginOpen] = useState(true);
     const [registerOpen, setRegisterOpen] = useState(false);
     const [developerOpen, setDeveloperOpen] = useState(false);
-    const [loginRole, setLoginRole] = useState("");
     const [registrationMessage, setRegistrationMessage] = useState("");
     const [recoveryMode, setRecoveryMode] = useState(() => resetToken ? "reset" : "");
     const [recoveryEmail, setRecoveryEmail] = useState("");
@@ -32,7 +31,7 @@ const Login = () => {
         localStorage.setItem("token", result.data.token);
         localStorage.setItem("user", JSON.stringify(result.data.user));
         window.dispatchEvent(new Event("smartcampus:account-changed"));
-        navigate("/dashboard");
+        navigate(readDefaultPage(result.data.user.id));
     };
 
     useEffect(() => {
@@ -66,7 +65,6 @@ const Login = () => {
 
     const openLogin = () => {
         setError("");
-        setLoginRole("");
         setRecoveryMode("");
         setRecoveryStatus("");
         setLoginOpen(true);
@@ -93,16 +91,12 @@ const Login = () => {
         e.preventDefault();
         setLoading(true);
         try {
-            const res = await API.post("/auth/login", { ...formData, role: loginRole });
-            if (loginRole && res.data.user.role !== loginRole) {
-                setError(`This account is registered as a ${res.data.user.role}. Choose ${res.data.user.role} to sign in.`);
-                return;
-            }
+            const res = await API.post("/auth/login", formData);
             finishLogin(res);
         } catch (error) {
             setError(error.response?.data?.message || (
                 error.code === "ECONNABORTED" || error.code === "ERR_NETWORK"
-                    ? `SmartCampus could not reach the API at ${API_BASE}. Check that ${API_BASE}/health returns status ok, VITE_API_URL points to your Node API, and Render's CLIENT_URL includes this Netlify site.`
+                    ? "Unable to connect to SmartCampus. Check your connection and try again."
                     : "Login failed. Please try again."
             ));
         } finally {
@@ -111,19 +105,16 @@ const Login = () => {
     };
 
     const handleGoogleCredential = async (credential) => {
-        if (!loginRole || loading) return;
+        if (loading) return;
         setLoading(true);
         setError("");
         try {
-            const response = await API.post("/auth/google/login", {
-                credential,
-                role: loginRole
-            });
+            const response = await API.post("/auth/google/login", { credential });
             finishLogin(response);
         } catch (googleError) {
             setError(googleError.response?.data?.message || (
                 googleError.code === "ECONNABORTED" || googleError.code === "ERR_NETWORK"
-                    ? `SmartCampus could not reach the API at ${API_BASE}. Check your connection and try again.`
+                    ? "Unable to connect to SmartCampus. Check your connection and try again."
                     : "Google login failed. Please try again."
             ));
         } finally {
@@ -180,9 +171,6 @@ const Login = () => {
                         <p className="login-eyebrow">THE UNIVERSITY OF THE GAMBIA</p>
                     </div>
                     <h1>SmartCampus</h1>
-                    <p className="login-welcome-copy">
-                        Your campus learning, coursework, classes and updates in one connected place.
-                    </p>
                     {successMsg && <p className="login-success" role="status">{successMsg}</p>}
                     {registrationMessage && <p className="login-success" role="status">{registrationMessage}</p>}
                     <div className="login-actions">
@@ -196,15 +184,17 @@ const Login = () => {
                 </section>
 
                 <aside className="login-project-notes">
-                    <p className="login-eyebrow">PROJECT NOTES</p>
-                    <h2>Learning that stays connected</h2>
+                    <p className="login-eyebrow">WHY SMARTCAMPUS</p>
+                    <h2>A connected campus learning platform</h2>
                     <p>
-                        SmartCampus brings the everyday parts of university learning together in one place.
+                        SmartCampus brings teaching, learning, and course communication into one learning
+                        management system for University of The Gambia students and lecturers.
                     </p>
                     <ul>
-                        <li>Find course materials, announcements and classmates.</li>
-                        <li>Keep track of assignments, deadlines and grades.</li>
-                        <li>Stay up to date with class activities and campus learning.</li>
+                        <li>Organize courses, share learning materials and links, and publish announcements.</li>
+                        <li>Create assignments and quizzes, collect submissions, and manage grading and feedback.</li>
+                        <li>Track deadlines, course activity, learning progress, and certificates.</li>
+                        <li>Support student collaboration and lecturer communication in each course.</li>
                     </ul>
                 </aside>
             </div>
@@ -216,26 +206,24 @@ const Login = () => {
                     onClick={() => setDeveloperOpen(true)}
                     aria-label="View Yunusa Bah's developer profile"
                 >
-                    <span className="developer-avatar" aria-hidden="true">YB</span>
+                    <img className="developer-avatar" src="/developer-profile.png" alt="" />
                     <span className="developer-trigger-copy">
                         <strong>Yunusa Bah</strong>
                         <span>Developer profile</span>
                     </span>
                     <span className="developer-trigger-arrow" aria-hidden="true">→</span>
                 </button>
-                <div>
-                    <p className="login-eyebrow">ABOUT SMARTCAMPUS</p>
-                    <p>A learning platform for the University of The Gambia community.</p>
-                </div>
-                <div className="login-contact">
-                    <strong>Contact</strong>
-                    <a href="tel:+220833359853">+220 833359853</a>
-                    <a href="tel:+220866726322">+220 866726322</a>
-                </div>
-                <div className="login-contact">
-                    <strong>Email</strong>
-                    <a href="mailto:yb22423255@utg.edu.gm">yb22423255@utg.edu.gm</a>
-                    <a href="mailto:bahy1878@gmail.com">bahy1878@gmail.com</a>
+                <div className="login-footer-contacts">
+                    <div className="login-contact">
+                        <strong>Contact</strong>
+                        <a href="tel:+220833359853">+220 833359853</a>
+                        <a href="tel:+220866726322">+220 866726322</a>
+                    </div>
+                    <div className="login-contact">
+                        <strong>Email</strong>
+                        <a href="mailto:yb22423255@utg.edu.gm">yb22423255@utg.edu.gm</a>
+                        <a href="mailto:bahy1878@gmail.com">bahy1878@gmail.com</a>
+                    </div>
                 </div>
             </footer>
 
@@ -261,37 +249,49 @@ const Login = () => {
                             ×
                         </button>
                         <header className="developer-profile-header">
-                            <span className="developer-avatar developer-avatar-large" aria-hidden="true">YB</span>
+                            <img
+                                className="developer-avatar developer-avatar-large"
+                                src="/developer-profile.png"
+                                alt="Yunusa Bah"
+                            />
                             <div>
-                                <p className="login-eyebrow">PROJECT DEVELOPER</p>
                                 <h2 id="developer-profile-title">Yunusa Bah</h2>
-                                <p>SmartCampus creator</p>
+                                <p>Computer Science student · SmartCampus developer</p>
                             </div>
                         </header>
-
                         <div className="developer-profile-content">
                             <section>
-                                <h3>Qualifications</h3>
+                                <h3>About</h3>
                                 <p>
-                                    A third-year Computer Science student and aspiring full-stack software developer
-                                    with hands-on experience building web applications.
+                                    Yunusa Bah is a third-year Computer Science student at the University of The
+                                    Gambia and an aspiring full-stack software developer. He builds web applications
+                                    and is interested in using technology to solve practical problems in education.
                                 </p>
                             </section>
                             <section>
-                                <h3>Why I created SmartCampus</h3>
+                                <h3>Why SmartCampus</h3>
                                 <p>
-                                    I created this project to bring course information, class communication and learning
-                                    activities into one accessible campus platform, making it easier for students and
-                                    lecturers to stay organized and connected.
+                                    SmartCampus was created to make course information, teaching resources, class
+                                    communication, and learning activities easier to access in one place. The goal
+                                    is to help lecturers manage course work while giving students a clear way to
+                                    follow materials, announcements, assignments, and results.
                                 </p>
                             </section>
                             <section>
-                                <h3>Project benefits</h3>
+                                <h3>What the platform supports</h3>
                                 <ul>
-                                    <li>One place for courses, materials, announcements and class communication.</li>
-                                    <li>Clearer tracking of assignments, deadlines, submissions and grades.</li>
-                                    <li>A more connected learning experience for students and lecturers.</li>
+                                    <li>Course setup, enrollment, learning materials, and shared resource links.</li>
+                                    <li>Assignments, online submissions, quizzes, timed assessments, and grading.</li>
+                                    <li>Announcements, class messaging, calendars, and deadline tracking.</li>
+                                    <li>Course progress, student permissions, grades, and completion certificates.</li>
                                 </ul>
+                            </section>
+                            <section>
+                                <h3>Development focus</h3>
+                                <p>
+                                    The project brings student and lecturer tools together around each course, with
+                                    attention to clear workflows, accessible information, and reliable course access.
+                                </p>
                             </section>
                         </div>
                     </section>
@@ -325,11 +325,9 @@ const Login = () => {
                                 {recoveryMode === "request" ? "Recover your account" :
                                     recoveryMode === "reset" ? "Choose a new password" : "Welcome back"}
                             </h2>
-                            <p>{recoveryMode === "request"
-                                ? "Enter your email and we’ll send recovery instructions if an eligible account exists."
-                                : recoveryMode === "reset"
-                                    ? "Use a new password to secure your account."
-                                    : "Choose your account type to continue."}</p>
+                            {recoveryMode && <p>{recoveryMode === "request"
+                                ? "Enter your account email."
+                                : "Enter a new password."}</p>}
                         </header>
 
                         {recoveryMode ? (
@@ -395,28 +393,10 @@ const Login = () => {
                             </>
                         ) : (
                             <>
-                                <div className="account-type-picker" aria-label="Choose account type">
-                                    {["student", "lecturer"].map((role) => (
-                                        <button
-                                            className={loginRole === role ? "active" : ""}
-                                            key={role}
-                                            type="button"
-                                            aria-pressed={loginRole === role}
-                                            onClick={() => {
-                                                setLoginRole(role);
-                                                setError("");
-                                            }}
-                                        >
-                                            {role === "student" ? "Student" : "Lecturer"}
-                                        </button>
-                                    ))}
-                                </div>
-                                {loginRole && (
-                            <>
                                 {error && <p className="login-error" role="alert">{error}</p>}
                                 <div className="google-signin-section">
                                     <p className="google-signin-copy">
-                                        Sign in with the Google account used to create your {loginRole} account.
+                                        Sign in with the Google account used to create your SmartCampus account.
                                     </p>
                                     <GoogleSignInButton
                                         onCredential={handleGoogleCredential}
@@ -427,7 +407,7 @@ const Login = () => {
                                 <div className="auth-divider"><span>or use your password</span></div>
                                 <form className="login-form" onSubmit={handleSubmit}>
                                     <label>
-                                        {loginRole === "student" ? "Student email" : "Lecturer email"}
+                                        Email address
                                         <input
                                             type="email"
                                             name="email"
@@ -454,8 +434,6 @@ const Login = () => {
                                         {loading ? "Signing in..." : "Login"}
                                     </button>
                                 </form>
-                            </>
-                                )}
                                 <p className="login-register-link">
                                     <button
                                         className="login-register-trigger"

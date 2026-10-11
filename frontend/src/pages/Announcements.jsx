@@ -3,12 +3,14 @@ import { FaBullhorn } from "react-icons/fa";
 import API from "../services/api";
 import { useAuth } from "../hooks/useAuth";
 import AnnouncementCard from "../components/AnnouncementCard";
+import CourseLecturerMessages from "../components/CourseLecturerMessages";
 
 const Announcements = () => {
     const { isStaff } = useAuth();
     const [courses, setCourses] = useState([]);
     const [announcements, setAnnouncements] = useState([]);
     const [form, setForm] = useState({ courseId: "", title: "", body: "" });
+    const [messageCourseId, setMessageCourseId] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [status, setStatus] = useState("");
@@ -23,9 +25,16 @@ const Announcements = () => {
                     ? courseResponse.data
                     : courseResponse.data
                         .map((enrollment) => enrollment.course
-                            ? { ...enrollment.course, canPostAnnouncements: enrollment.canPostAnnouncements }
+                            ? {
+                                ...enrollment.course,
+                                canPostAnnouncements: enrollment.canPostAnnouncements,
+                                permissions: enrollment.permissions || []
+                            }
                             : null)
                         .filter(Boolean);
+                const availableMessageCourses = isStaff
+                    ? availableCourses
+                    : availableCourses.filter((course) => course.permissions.includes("messageLecturer"));
                 const resultSets = await Promise.all(availableCourses.map(async (course) => {
                     const response = await API.get(`/courses/${course.id}/announcements`);
                     return response.data.map((announcement) => ({
@@ -36,6 +45,9 @@ const Announcements = () => {
                 }));
                 if (active) {
                     setCourses(availableCourses);
+                    setMessageCourseId((current) => availableMessageCourses.some((course) => String(course.id) === current)
+                        ? current
+                        : String(availableMessageCourses[0]?.id || ""));
                     setAnnouncements(resultSets.flat().sort((a, b) =>
                         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
                     ));
@@ -82,7 +94,6 @@ const Announcements = () => {
                 <div>
                     <p className="eyebrow">COURSE UPDATES</p>
                     <h1>Announcements</h1>
-                    <p className="subtitle">Important updates shared with your courses.</p>
                 </div>
                 <span className="grades-header-icon"><FaBullhorn /></span>
             </header>
@@ -105,6 +116,27 @@ const Announcements = () => {
                 </form>
             </details>}
 
+            {courses.length > 0 && (
+                <section className="course-feature-section">
+                    {isStaff || courses.some((course) => course.permissions?.includes("messageLecturer")) ? (
+                        <>
+                    <label className="messages-course-select">Private course inbox
+                        <select value={messageCourseId} onChange={(event) => setMessageCourseId(event.target.value)}>
+                            {courses.filter((course) => isStaff || course.permissions?.includes("messageLecturer"))
+                                .map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}
+                        </select>
+                    </label>
+                    {messageCourseId && <CourseLecturerMessages
+                        key={`${messageCourseId}-${isStaff || courses.find((course) => String(course.id) === messageCourseId)?.permissions?.includes("messageLecturer")}`}
+                        courseId={Number(messageCourseId)}
+                        isLecturer={isStaff}
+                        canMessageLecturer={courses.find((course) => String(course.id) === messageCourseId)?.permissions?.includes("messageLecturer")}
+                    />}
+                        </>
+                    ) : <p className="messenger-empty">Private messaging permission required.</p>}
+                </section>
+            )}
+
             {loading ? <p className="dashboard-loading" role="status">Loading announcements...</p> : error ? (
                 <div className="dashboard-alert" role="alert">{error}</div>
             ) : announcements.length ? (
@@ -114,7 +146,7 @@ const Announcements = () => {
                     ))}
                 </section>
             ) : (
-                <div className="feature-empty"><FaBullhorn /><strong>No announcements yet</strong><span>New course updates from your lecturers will show up here.</span></div>
+                <div className="feature-empty"><FaBullhorn /><strong>No announcements yet</strong></div>
             )}
         </div>
     );

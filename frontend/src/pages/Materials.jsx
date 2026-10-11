@@ -21,7 +21,7 @@ const Materials = () => {
     const [isUploadOpen, setIsUploadOpen] = useState(false);
     const [previewMaterial, setPreviewMaterial] = useState(null);
     const [uploading, setUploading] = useState(false);
-    const [form, setForm] = useState({ title: "", courseId: "", file: null });
+    const [form, setForm] = useState({ title: "", courseId: "", resourceUrl: "", file: null });
     const fileInput = useRef(null);
 
     useEffect(() => {
@@ -33,7 +33,12 @@ const Materials = () => {
                 const courseResponse = await API.get(isStaff ? "/courses/my" : "/enrollments/my-courses");
                 const availableCourses = isStaff
                     ? courseResponse.data
-                    : courseResponse.data.map((enrollment) => enrollment.course).filter(Boolean);
+                    : courseResponse.data
+                        .filter((enrollment) => enrollment.course)
+                        .map((enrollment) => ({
+                            ...enrollment.course,
+                            permissions: enrollment.permissions || []
+                        }));
                 const courseMaterials = await Promise.all(availableCourses.map(async (course) => {
                     const response = await API.get(`/lessons/course/${course.id}`);
                     return response.data.map((material) => ({
@@ -47,7 +52,10 @@ const Materials = () => {
                     setMaterials(courseMaterials.flat());
                     setForm((current) => ({
                         ...current,
-                        courseId: current.courseId || String(availableCourses[0]?.id || "")
+                        courseId: current.courseId || String((isStaff
+                            ? availableCourses[0]
+                            : availableCourses.find((course) => course.permissions.includes("uploadMaterials"))
+                        )?.id || "")
                     }));
                 }
             } catch (error) {
@@ -60,12 +68,16 @@ const Materials = () => {
         loadMaterials();
         return () => { active = false; };
     }, [isStaff]);
+    const canUploadMaterials = isStaff || courses.some((course) => course.permissions?.includes("uploadMaterials"));
+    const uploadableCourses = isStaff
+        ? courses
+        : courses.filter((course) => course.permissions?.includes("uploadMaterials"));
 
     const visibleMaterials = useMemo(() => {
         const query = search.trim().toLowerCase();
         return materials.filter((material) => {
             const matchesCourse = courseFilter === "all" || String(material.courseId) === courseFilter;
-            const matchesSearch = !query || `${material.title} ${material.courseTitle} ${material.content || ""}`
+            const matchesSearch = !query || `${material.title} ${material.courseTitle} ${material.content || ""} ${material.videoUrl || ""}`
                 .toLowerCase()
                 .includes(query);
             return matchesCourse && matchesSearch;
@@ -89,14 +101,16 @@ const Materials = () => {
 
     const shareMaterial = async (event) => {
         event.preventDefault();
-        if (!form.file || !form.courseId) {
-            setUploadError("Choose a course and a material file to share.");
+        if ((!form.file && !form.resourceUrl.trim()) || !form.courseId ||
+            (!isStaff && !courses.find((course) => String(course.id) === form.courseId)?.permissions?.includes("uploadMaterials"))) {
+            setUploadError("Choose a course and add a file or resource link.");
             return;
         }
         const payload = new FormData();
         payload.append("title", form.title);
         payload.append("courseId", form.courseId);
-        payload.append("file", form.file);
+        payload.append("videoUrl", form.resourceUrl);
+        if (form.file) payload.append("file", form.file);
         setUploading(true);
         setUploadError("");
         try {
@@ -109,7 +123,7 @@ const Materials = () => {
                 courseId: course.id,
                 courseTitle: course.title
             }, ...current]);
-            setForm((current) => ({ ...current, title: "", file: null }));
+            setForm((current) => ({ ...current, title: "", resourceUrl: "", file: null }));
             if (fileInput.current) fileInput.current.value = "";
             setIsUploadOpen(false);
             window.dispatchEvent(new Event("smartcampus:dashboard-refresh"));
@@ -126,9 +140,8 @@ const Materials = () => {
                 <div>
                     <p className="eyebrow">LEARNING RESOURCES</p>
                     <h1>Shared Materials</h1>
-                    <p className="subtitle">Browse materials shared in your courses.</p>
                 </div>
-                {isStaff && (
+                {canUploadMaterials && (
                     <button
                         type="button"
                         className="create-course-button"
@@ -160,7 +173,7 @@ const Materials = () => {
                     <span>Course</span>
                     <select value={courseFilter} onChange={(event) => setCourseFilter(event.target.value)}>
                         <option value="all">All courses</option>
-                        {courses.map((course) => (
+                        {uploadableCourses.map((course) => (
                             <option key={course.id} value={String(course.id)}>{course.title}</option>
                         ))}
                     </select>
@@ -187,7 +200,7 @@ const Materials = () => {
                                     </time>
                                 )}
                                 {material.content && <p>{material.content}</p>}
-                                {material.videoUrl && <a href={material.videoUrl} target="_blank" rel="noreferrer">Watch video</a>}
+                                {material.videoUrl && <a href={material.videoUrl} target="_blank" rel="noreferrer">Open learning resource</a>}
                             </div>
                             {material.hasFile && (
                                 <div className="material-file-actions">
@@ -214,9 +227,7 @@ const Materials = () => {
                 <div className="materials-empty">
                     <FaBookOpen aria-hidden="true" />
                     <h2>{materials.length ? "No materials match your filters" : "No shared materials yet"}</h2>
-                    <p>{materials.length
-                        ? "Try another search or choose a different course."
-                        : "Materials shared in your courses will appear here."}</p>
+                    <p>{materials.length ? "No matching materials." : "No materials available."}</p>
                 </div>
             )}
 
@@ -234,7 +245,6 @@ const Materials = () => {
                             <FaTimes aria-hidden="true" />
                         </button>
                         <h2 id="share-material-heading">Share a material</h2>
-                        <p className="course-modal-intro">Choose one of your courses and upload a resource for its students.</p>
                         {uploadError && <p className="course-modal-feedback" role="alert">{uploadError}</p>}
                         <form className="course-create-form" onSubmit={shareMaterial}>
                             <label>
@@ -262,12 +272,22 @@ const Materials = () => {
                                 />
                             </label>
                             <label>
-                                Upload file
+                                Resource link (optional)
+                                <input
+                                    type="url"
+                                    maxLength={2048}
+                                    placeholder="Book, video, or learning platform URL"
+                                    value={form.resourceUrl}
+                                    onChange={(event) => setForm((current) => ({ ...current, resourceUrl: event.target.value }))}
+                                    disabled={uploading}
+                                />
+                            </label>
+                            <label>
+                                Upload a file from your device (optional)
                                 <input
                                     type="file"
                                     ref={fileInput}
                                     accept={fileTypes}
-                                    required
                                     onChange={(event) => setForm((current) => ({ ...current, file: event.target.files?.[0] || null }))}
                                     disabled={uploading}
                                 />

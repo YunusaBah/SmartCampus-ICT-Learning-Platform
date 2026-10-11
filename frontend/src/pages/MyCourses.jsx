@@ -24,7 +24,7 @@ const MyCourses = () => {
                     <Link to={`/courses/${course.id}?section=overview`} className="course-list-item" key={course.id}>
                         <span className="course-list-copy">
                             <strong>{course.title}</strong>
-                            <span>{course.description || "Open the classroom to view course information and learning materials."}</span>
+                            {course.description && <span>{course.description}</span>}
                         </span>
                         <span className="course-list-arrow">Open classroom</span>
                     </Link>

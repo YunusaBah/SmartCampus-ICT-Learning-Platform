@@ -35,7 +35,7 @@ exports.joinByCode = async (req, res) => {
         const already = await Enrollment.findOne({ where: { studentId: req.user.id, courseId: course.id } });
         if (already) return res.status(409).json({ message: "You are already enrolled in this class." });
 
-        await Enrollment.create({ studentId: req.user.id, courseId: course.id });
+        await Enrollment.create({ studentId: req.user.id, courseId: course.id, permissions: [] });
         const courseData = course.toJSON();
         delete courseData.classCode;
         courseData.hasContentFile = Boolean(courseData.contentFileUrl);
@@ -57,7 +57,7 @@ exports.getStudentCourses = async (req, res) => {
             include: [{
                 model: Course,
                 as: "course",
-                include: [{ model: User, as: "lecturer", attributes: ["fullName"] }]
+                include: [{ model: User, as: "lecturer", attributes: ["fullName", "email"] }]
             }],
             order: [["createdAt", "DESC"]]
         });
@@ -117,6 +117,7 @@ exports.getStudentCourses = async (req, res) => {
                 delete data.course.contentFileUrl;
                 delete data.course.classCode;
                 data.course.lecturerName = data.course.lecturer?.fullName || "Lecturer";
+                data.course.lecturerEmail = data.course.lecturer?.email || null;
                 delete data.course.lecturer;
                 data.course.materialCount = (lessonCounts.get(data.course.id) || 0) +
                     Number(hasLegacyMaterial);
